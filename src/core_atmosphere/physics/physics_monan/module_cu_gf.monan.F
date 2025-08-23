@@ -212,7 +212,7 @@ module module_cu_gf_monan
 
    integer :: use_wetbulb       != 0/1
 
-   real    :: overshoot
+   real    :: overshoot         != 0, 1
 
    real    :: dcape_threshold   != CAPE time rate threshold for ADV_TRIGGER (J kg^-1 hr^-1)
    
@@ -306,6 +306,7 @@ module module_cu_gf_monan
    !- proportionality constant to estimate pressure
    !- gradient of updraft (Zhang and Wu, 2003, JAS) => REAL, PARAMETER ::    pgcon=-0.55
    real, parameter :: pgcon= 0.0
+
    real, parameter ::  delta_ref= 30.e+3  & ! meters
                       ,entr_ref = 8.e-4     ! ref entrainment for dx = 30000 m
 
@@ -1724,6 +1725,7 @@ module module_cu_gf_monan
         ,Q_adv,alpha_adv,aa1_radpbl,p_cwv_ave,cape, depth_neg_buoy,frh_bcon                &
         ,check_sig,random,rh_entr_factor,rntot,delqev,delq2,qevap,rn,qcond,rainevap,vshear2&
         ,entr_rescaled,overshoot_rescaled
+
       real, dimension (kts:kte) ::xh_env_eff
 
       real, dimension (kts:kte,its:ite) ::                                            &
@@ -1847,7 +1849,7 @@ module module_cu_gf_monan
          entr_rescaled(:) = (delta_ref/dx(:))**0.2
          entr_rate    (:) = entr_ref * entr_rescaled(:)
          min_entr_rate    = entr_ref * fr_min_entr * minval(entr_rescaled)
-         overshoot_rescaled(:) = overshoot * entr_rescaled(:)
+         overshoot_rescaled(:) = min(0.7, overshoot * entr_rescaled(:))
       else
       !-- initial entrainment rate and the mininum acceptable entrainment rate
       entr_rate(:)  = entr_rate_input
@@ -2438,13 +2440,13 @@ module module_cu_gf_monan
       !--- for outputs (only deep plume)
       !
       if( trim(cumulus) == 'deep') then
-        var2d1(:) = aa1(:)
-        var2d2(:) = aa1_bl(:)
+        !var2d1(:) = aa1(:)
+        !var2d2(:) = aa1_bl(:)
         !var2d2(:) = vshear2(:)
-        !var2d1(:) = x_add_buoy(:)
+         var2d1(:) = x_add_buoy(:)
          if( adv_trigger == 0 .and. convection_tracer == 1) then 
             do i=its,itf
-                !var2d1(i) = maxval( buoy_exc(kts:ktop(i),i) )
+                var2d2(i) = maxval( buoy_exc(kts:ktop(i),i) )
                !var2d1(i) = p_cwv_ave(i)
             enddo
          endif 
@@ -7124,11 +7126,6 @@ module module_cu_gf_monan
            enddo
       enddo
 
-      !if(cumulus /= 'shallow') then
-      !   do vtp_index = get_num_elements(vec_ok),1,-1
-      !      i = get_data_value(vec_ok,vtp_index)
-      !      cd(:,i)=0.75e-4*detr_frh2d(:,i)               
-      !   enddo
       if(cumulus == 'shallow') then
           do vtp_index = get_num_elements(vec_ok),1,-1
             i = get_data_value(vec_ok,vtp_index)
@@ -8588,7 +8585,7 @@ module module_cu_gf_monan
       icumulus_gf      = (/1, 1, 0/)
       closure_choice   = (/10,10, 3/) 
       cum_entr_rate    = (/       &
-                            8.0e-4 & !deep
+                           -999.0  & !deep
                           ,13.0e-4 & !shallow
                           ,20.0e-4 & !mid
                          /)
@@ -8610,12 +8607,12 @@ module module_cu_gf_monan
 
       convection_tracer = 1 
       use_memory        = 0 
-      add_coldpool_clos = 0
+      add_coldpool_clos = 4
       add_coldpool_trig = 0
       add_coldpool_prop = 3 
       add_coldpool_diff = 3 
       tau_ocea_cp       = 3600. 
-      tau_land_cp       = 1800. 
+      tau_land_cp       = 3600. 
       mx_buoy1          = 250.5   ! J/kg (real(c_cp)*5.0 + real(c_alvl)*2.e-3)*0.025  
       mx_buoy2          = 20004.0 ! J/kg (real(c_cp)*10.+real(c_alvl)*4.e-3) 
       use_gustiness     = 0    
@@ -11018,7 +11015,7 @@ module module_cu_gf_monan
 
                     !- time-scale cape removal from Bechtold et al. 2008
                     tau_ecmwf(i)=( zo_cup(ktop(i),i)- zo_cup(kbcon(i),i) ) / wmean(i)
-                    tau_ecmwf(i)= min(10800., max(1800.,tau_ecmwf(i)))
+                    tau_ecmwf(i)= min(10800., max(1200.,tau_ecmwf(i)))
 
                  enddo
               endif

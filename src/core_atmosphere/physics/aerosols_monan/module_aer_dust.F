@@ -14,8 +14,13 @@
  use mpas_atmphys_constants
 
  implicit none
+ integer, parameter :: max_num_dust_aer_monan = 10
+ integer, dimension(max_num_dust_aer_monan) :: ind_dust_to_aer
+
+
+
  private
- public:: driver_aerosol_dust
+ public:: driver_aerosol_dust,ind_dust_to_aer
 
  contains
 

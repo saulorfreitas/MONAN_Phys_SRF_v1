@@ -15,7 +15,7 @@
  use mpas_atmphys_vars
 
 
- use module_aerosol_dust,only: driver_aerosol_dust
+ use module_aerosol_dust,only: driver_aerosol_dust,ind_dust_to_aer
 
  implicit none
  private
@@ -241,7 +241,7 @@
  integer,pointer:: num_gas_monan, num_tracer_monan
  integer,pointer:: config_aer_monan, config_dust_aer_monan 
  integer,pointer:: index_aer01,index_aer02
- integer,pointer:: index_dst01,index_dst02,index_dst03,index_dst04
+ integer,pointer:: index_dst01,index_dst02,index_dst03,index_dst04,index_dstNN
  integer,pointer,dimension(:) :: aer_ind_monan
  
  real(kind=RKIND),dimension(:,:,:),pointer:: scalars
@@ -278,13 +278,16 @@
  call mpas_pool_get_array(diag_physics,'aer_ind_monan',aer_ind_monan)
 
  ind = 0
- ind=ind+1 ; aer_ind_monan(ind) = index_aer01
- ind=ind+1 ; aer_ind_monan(ind) = index_aer02
+ if(index_aer01 > 0) ind=ind+1 ; aer_ind_monan(ind) = index_aer01
+ if(index_aer02 > 0) ind=ind+1 ; aer_ind_monan(ind) = index_aer02
+ 
+!--- dust section
+ ind_dust_to_aer(:) = -1
  if(config_dust_aer_monan == 1) then 
-     ind=ind+1 ; aer_ind_monan(ind) = index_dst01
-     ind=ind+1 ; aer_ind_monan(ind) = index_dst02
-     ind=ind+1 ; aer_ind_monan(ind) = index_dst03
-     ind=ind+1 ; aer_ind_monan(ind) = index_dst04
+     ind=ind+1 ; aer_ind_monan(ind) = index_dst01 ; ind_dust_to_aer(ind) = ind
+     ind=ind+1 ; aer_ind_monan(ind) = index_dst02 ; ind_dust_to_aer(ind) = ind
+     ind=ind+1 ; aer_ind_monan(ind) = index_dst03 ; ind_dust_to_aer(ind) = ind
+     ind=ind+1 ; aer_ind_monan(ind) = index_dst04 ; ind_dust_to_aer(ind) = ind
  endif
  if(ind .ne. num_aer_monan) then 
             call mpas_log_write('check number of aerosols')
