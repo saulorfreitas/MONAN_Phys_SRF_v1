@@ -2442,11 +2442,11 @@ module module_cu_gf_monan
       if( trim(cumulus) == 'deep') then
         !var2d1(:) = aa1(:)
         !var2d2(:) = aa1_bl(:)
-        !var2d2(:) = vshear2(:)
-         var2d1(:) = x_add_buoy(:)
+         var2d1(:) = vshear2(:)
+        !var2d1(:) = x_add_buoy(:)
          if( adv_trigger == 0 .and. convection_tracer == 1) then 
             do i=its,itf
-                var2d2(i) = maxval( buoy_exc(kts:ktop(i),i) )
+               ! var2d2(i) = maxval( buoy_exc(kts:ktop(i),i) )
                !var2d1(i) = p_cwv_ave(i)
             enddo
          endif 
@@ -10880,10 +10880,14 @@ module module_cu_gf_monan
       real,    parameter :: alpha = 0.12
       real,    parameter :: beta  = 0.32
       real,    parameter :: H0    = 11.0      
+      ! Parameters to control the sharpness of the transition
+      real,    parameter :: center    = 15.0
+      real,    parameter :: width2    = 2.0
+      real,    parameter :: sharpness = 50.0
+
       integer :: i,k650
       real    :: u650, u975, v650, v975, H
       real,    dimension (its:itf) :: scale_factor
-      
       scale_factor = 1.0
       do i=its,itf 
            k650 = minloc( abs(po(kts:ktf,i)-p650),1 )
@@ -10902,8 +10906,9 @@ module module_cu_gf_monan
             
       if( use_shear_ctrl_entr == 1 ) then
         do i=its,itf
-           scale_factor(i)  = 1.5/(1.5+atan(2.*(vshear(i) - turnw)/width))
-           scale_factor(i)  = scale_factor(i)**xexp
+          !scale_factor(i)  = 1.5/(1.5+atan(2.*(vshear(i) - turnw)/width))
+          !scale_factor(i)  = scale_factor(i)**xexp
+           scale_factor(i)  = 1.0 - 0.5 * (1.0 + tanh(sharpness * (vshear(i) - center) / width2))
         enddo
       endif
 
