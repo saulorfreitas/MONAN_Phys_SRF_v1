@@ -41,7 +41,7 @@ module module_pbl_scalars
 
       integer,pointer:: config_aer_monan
       integer,pointer:: num_gen_aer_monan,num_dust_aer_monan
-      integer,pointer:: num_aer_monan => null()
+      integer,pointer:: num_aer_monan
       integer,pointer:: num_gas_monan, num_tracer_monan
       integer,pointer,dimension(:) :: aer_ind_monan
       real(kind=RKIND),dimension(:,:,:),pointer:: raerblten
@@ -62,12 +62,13 @@ module module_pbl_scalars
 
       !--- CCPP-compliant flags:
       character(len=StrKIND):: errmsg
-      integer:: errflg, n_aer
+      integer:: errflg, n_aer, local_num_aer_monan
       real :: dt_inv
 
       !----initialization of CCPP-compliant flags:
       errmsg = ' '
       errflg = 0
+      local_num_aer_monan = 0
       dt_inv = 1.0_RKIND/dt_pbl
 
       call mpas_pool_get_config(configs,'config_do_restart'  ,config_do_restart  )
@@ -98,6 +99,7 @@ module module_pbl_scalars
                 index_scalar(nscalars) = aer_ind_monan(n_aer)
                 !print*,'naer', n_aer, num_aer_monan, index_scalar(nscalars),nscalars
           enddo
+          local_num_aer_monan = num_aer_monan
           !--- tendencies 
           call mpas_pool_get_array(tend_physics,'raerblten',raerblten)
       endif
@@ -154,14 +156,14 @@ module module_pbl_scalars
           call mix_scalars_opt(kts,kte,dt_pbl,dz,rho,dfh,nscalars,local_scalars)
 
           !--- copy back the updated scalars
-          do isc = 1, nscalars - num_aer_monan
+          do isc = 1, nscalars - local_num_aer_monan
               scalars(index_scalar(isc),kts:kte,i) = local_scalars(kts:kte,isc)  
           enddo
           
           !--- aerosol section - producing the tendencies instead of updating the scalar mixing ratio
           !--- (a tendency could be computed here by saving the previous values of the scalars)
           n_aer = 0
-          do isc = nscalars - num_aer_monan + 1,nscalars
+          do isc = nscalars - local_num_aer_monan + 1,nscalars
               n_aer = n_aer + 1
               !if(i==its) print*,'check index',index_scalar(isc),aer_ind_monan(n_aer)
               raerblten(n_aer,kts:kte,i) = dt_inv*(local_scalars(kts:kte,isc) - scalars(index_scalar(isc),kts:kte,i))
@@ -169,7 +171,7 @@ module module_pbl_scalars
 
       enddo ! loop i
 
-      !do n_aer = 1, num_aer_monan
+      !do n_aer = 1, local_num_aer_monan
       !         print*,'naer',   aer_ind_monan(n_aer), maxval(scalars( aer_ind_monan(n_aer),:,:)),minval(scalars( aer_ind_monan(n_aer),:,:))
       !enddo
 

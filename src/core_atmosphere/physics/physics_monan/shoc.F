@@ -129,6 +129,8 @@ real(rtype), parameter :: ricr  =  0.3_rtype      ! Critical richardson number
 ! Maximum number of levels in pbl from surface
 integer :: npbl
 
+integer :: mynum
+
 !==============================================================
 ! Begin SHOC parameterization code!
 contains
@@ -431,10 +433,17 @@ subroutine shoc_main ( &
   ! pressure levels on interface grid [Pa] used in mf_integrate()
   real(rtype) :: pres_zi(shcol,nlevi)
 
+!----
+real(rtype), dimension(shcol,nlev) :: qw1,th1,shoc_ql1
+qw1=qw
+th1=thetal
+shoc_ql1=shoc_ql
+!---
+
   if (.not. do_edmf .and. .not. do_mf_diag) then
-    print*, 'SHOCMF: MASS FLUX DISABLED'
+  !  print*, 'SHOCMF: MASS FLUX DISABLED'
   else if (do_edmf .and. do_mf_diag) then
-    print*, 'SHOCMF: MASS FLUX ENABLED'
+  !  print*, 'SHOCMF: MASS FLUX ENABLED'
   endif
 
   ! Compute integrals of static energy, kinetic energy, water vapor, and liquid water
@@ -447,6 +456,7 @@ subroutine shoc_main ( &
      se_b,ke_b,wv_b,wl_b)                   ! Input/Output
 
   do t=1,nadv
+   print*,'in shoc timestep',t,dtime,maxval(tk),minval(tk)
      
     ! Check TKE to make sure values lie within acceptable
     !  bounds after host model performs horizontal advection
@@ -558,6 +568,9 @@ subroutine shoc_main ( &
         thetal,wthv_sec,thv,&             ! Input
         brunt,shoc_mix)                   ! Output
         
+  !print*,'before shoc_tke', maxval(tk),minval(tk),maxval(tkh),minval(tkh)
+
+
     ! Advance the SGS TKE equation
     call shoc_tke(&
         shcol,nlev,nlevi,dtime,&                ! Input
@@ -567,7 +580,11 @@ subroutine shoc_main ( &
         zt_grid,zi_grid,pblh,&                  ! Input
         tke,tk,tkh,&                            ! Input/Output
         isotropy, a_diss, a_prod_bu, a_prod_sh) ! Output
-        
+
+  !print*,'after shoc_tke', maxval(tk),minval(tk),maxval(tkh),minval(tkh)
+
+
+
     ! Update SHOC prognostic variables here
     !   via implicit diffusion solver
     call update_prognostics_implicit(&        ! Input
@@ -580,6 +597,13 @@ subroutine shoc_main ( &
        mf_awthl,mf_awqt,&                     ! EDMF Input
        thetal,qw,qtracers,tke,&               ! Input/Output
        u_wind,v_wind)                         ! Input/Output
+
+print*,'maxqw1=',maxval(abs(qw1-qw))
+print*,'maxth1=',maxval(abs(th1-thetal))
+print*,'maxql1=',maxval(abs(shoc_ql1-shoc_ql))
+
+
+
 
     ! Diagnose the second order moments
     call diag_second_shoc_moments(&
@@ -595,6 +619,12 @@ subroutine shoc_main ( &
        w_sec,&                                ! Output
        mf_thlflx, mf_qtflx, &
        wthl_sec_ed,wthl_sec_mf, wqw_sec_ed, wqw_sec_mf)  ! Output - EDMF)  
+
+print*,'maxqw2=',maxval(abs(qw1-qw))
+print*,'maxth2=',maxval(abs(th1-thetal))
+print*,'maxql2=',maxval(abs(shoc_ql1-shoc_ql))
+
+
        
     ! Diagnose the third moment of vertical velocity,
     !  needed for the PDF closure
@@ -605,6 +635,12 @@ subroutine shoc_main ( &
        thetal,tke,&                         ! Input
        dz_zt,dz_zi,zt_grid,zi_grid,&        ! Input
        w3)                                  ! Output
+
+print*,'maxqw3=',maxval(abs(qw1-qw))
+print*,'maxth3=',maxval(abs(th1-thetal))
+print*,'maxql3=',maxval(abs(shoc_ql1-shoc_ql))
+
+
 
     ! Call the PDF to close on SGS cloud and turbulence
     if (do_edmf) then
@@ -629,9 +665,16 @@ subroutine shoc_main ( &
        wqls_sec,wthv_sec,shoc_ql2)          ! Output
     endif
 
+print*,'maxqw4=',maxval(abs(qw1-qw))
+print*,'maxth4=',maxval(abs(th1-thetal))
+print*,'maxql4=',maxval(abs(shoc_ql1-shoc_ql))
+
+
+
     ! Check TKE to make sure values lie within acceptable
     !  bounds after vertical advection, etc.
     call check_tke(shcol,nlev,tke)
+  !print*,'end of time int', maxval(tk),minval(tk),maxval(tkh),minval(tkh)
 
   enddo ! end time loop
 
@@ -730,7 +773,7 @@ subroutine edmf_pblh(&
     pblh_wthl(i) = 0._rtype
     check  = .true.
     ! TODO (GTF): This 'check' variable is unecessary. It is possible to use break
-    do k = 45,nlev  ! from top to bottom
+    do k = 1,nlev  ! from top to bottom
         if (check .and. abs(abs(wthl_sec(i,k)) - abs(wthl_sec(i,k+1))) > 0.001_rtype) then
          pblh_wthl(i) = zi_grid(i,k)
          check = .false.
@@ -756,6 +799,10 @@ subroutine edmf_pblh(&
     endif
   enddo
   
+
+  !do i=1,shcol
+  !  print*,"Xpbl",pblh_wthl(i),pblh_tke(i)
+  !enddo
 end subroutine edmf_pblh
 
 !==============================================================
@@ -815,7 +862,12 @@ if(dz_zt(i,k) < 0.) stop 2111
       ! TODO (GTF): We could pass through parameter 'rho' from MPAS instead of defining it here.
       ! Define the air density on the thermo grid
       rho_zt(i,k) = (1._rtype/ggr)*(pdel(i,k)/dz_zt(i,k))
-      
+            
+!if(rho_zt(i,k) < 0. .or. rho_zt(i,k) > 1.3 ) then 
+!    print*,'rho',i,k, rho_zt(i,k),pdel(i,k),dz_zt(i,k)
+   ! stop 2112
+!endif
+
     enddo ! end i loop (column loop)
   enddo ! end k loop (vertical loop)
 
@@ -870,7 +922,17 @@ subroutine compute_shoc_vapor( &
   do k = 1, nlev
     do i = 1, shcol
       qv(i,k) = qw(i,k) - ql(i,k)
-      if(qv(i,k) < 0.0) stop 'qv neg'
+      !if(qv(i,k) <  ql(i,k)) then
+      !    print*,'qv',i,k,qv(i,k)*1000., qw(i,k)*1000., ql(i,k)*1000.
+          !call flush(6)
+          
+      !endif
+     if(qv(i,k) <  0.) then
+          print*,'qv',i,k,mynum, qv(i,k)*1000., qw(i,k)*1000., ql(i,k)*1000.
+          !call flush(6)
+          stop 'qv neg'
+      endif
+
     enddo
   enddo
 
@@ -976,7 +1038,7 @@ subroutine update_prognostics_implicit( &
   real(rtype) :: ca(shcol,nlev) ! superdiagonal for solver
   real(rtype) :: cc(shcol,nlev) ! subdiagonal for solver
   real(rtype) :: denom(shcol,nlev) ! denominator in solver
-  real(rtype) :: ze(shcol,nlev)
+  real(rtype) :: ze(shcol,nlev)!, qw1(shcol,nlev), tw1(shcol,nlev)
 
   real(rtype) :: tmpi3(shcol,nlevi) ! for EDMF in diffusion solver
 
@@ -1025,6 +1087,9 @@ subroutine update_prognostics_implicit( &
   call vd_shoc_decomp(shcol,nlev,nlevi,tkh_zi,tmpi,rdp_zt,dtime,&
      flux_dummy,do_mf,mf_ae,mf_aw,tmpi3,ca,cc,denom,ze)
 
+!tw1=thetal
+!qw1=qw
+
   ! march temperature one step forward using implicit solver
   call vd_shoc_solve(shcol,nlev,nlevi,ca,cc,denom,ze,do_mf,mf_awthl,tmpi3,rdp_zt,thetal)
 
@@ -1041,6 +1106,11 @@ subroutine update_prognostics_implicit( &
   do p=1,num_tracer
     call vd_shoc_solve(shcol,nlev,nlevi,ca,cc,denom,ze,.false.,mf_aw,tmpi3,rdp_zt,tracer(:shcol,:nlev,p))
   enddo
+
+!if(maxval(abs(tw1-thetal) >0.0 .or. minval(abs(tw1-thetal)) > 0.0 )) print*,'thet diff'
+!if(maxval(abs(qw1-qw)     >0.0 .or. minval(abs(qw1-qw)    ) > 0.0 )) print*,'qw diff'
+!print*,'diff', maxval(abs(tw1-thetal)), maxval(abs(qw1-qw) )
+
 
   return
 
@@ -2350,7 +2420,7 @@ subroutine x_y_terms_diag_third_shoc_moment(&
 ! local variables
   real(rtype) :: a0, a1, a2, a3
 
-  real(rtype) :: one_minus_a3_buoysgs
+  real(rtype) :: one_minus_a3_buoysgs,den_x
 
   a0=(0.52_rtype*(1._rtype/bfb_square(c_diag_3rd_mom)))/(c_diag_3rd_mom-2._rtype)
   a1=0.87_rtype/bfb_square(c_diag_3rd_mom)
@@ -2358,14 +2428,21 @@ subroutine x_y_terms_diag_third_shoc_moment(&
   a3=0.6_rtype/(c_diag_3rd_mom*(c_diag_3rd_mom-2._rtype))
 
   one_minus_a3_buoysgs = 1._rtype - a3 * buoy_sgs2
-  x0 = (a2 * buoy_sgs2 * (one_minus_a3_buoysgs)) / &
-       (1._rtype - (a1 + a3) * buoy_sgs2)
-  !if (abs(denom_y0) .lt. 0.01_rtype) then
-    ! denom_y0 = sign(0.01_rtype, denom_y0)
-  !endif
+  if (abs(one_minus_a3_buoysgs) <  1.e-9_rtype) then
+      one_minus_a3_buoysgs = sign(1.e-9_rtype,one_minus_a3_buoysgs)
+  endif
+
+  den_x =  (1._rtype - (a1 + a3) * buoy_sgs2)
+  if(abs(den_x) < 1.e-9_rtype) then 
+      den_x = sign(1.e-9_rtype,den_x)
+  endif
+
+  x0 = (a2 * buoy_sgs2 * (one_minus_a3_buoysgs)) / den_x
+      
   y0 = (2._rtype * a2 * buoy_sgs2 * x0) / one_minus_a3_buoysgs
-  x1 = (a0 * f0 + a1 * f1 + a2 * (one_minus_a3_buoysgs) * f2) / &
-       (1._rtype - (a1 + a3) * buoy_sgs2)
+
+  x1 = (a0 * f0 + a1 * f1 + a2 * (one_minus_a3_buoysgs) * f2) / den_x
+
   y1 = (2._rtype * a2 * (buoy_sgs2 * x1 + (a0/a1) * f0 + f1)) / &
        (one_minus_a3_buoysgs)
 
@@ -2582,7 +2659,7 @@ subroutine shoc_assumed_pdf(&
 
   ! Initialize cloud variables to zero
   shoc_cldfrac(:,:)=0._rtype
-  shoc_ql(:,1)=0._rtype
+  shoc_ql(:,:)=0._rtype
   shoc_ql2(:,:) = 0._rtype
 
   ! Interpolate many variables from interface grid to themo grid
@@ -2595,7 +2672,6 @@ subroutine shoc_assumed_pdf(&
 
   do k=1,nlev
     do i=1,shcol
-
       pval = pres(i,k)
 
       ! Get all needed input moments for the PDF
@@ -2719,6 +2795,7 @@ subroutine shoc_assumed_pdf(&
       call shoc_assumed_pdf_compute_sgs_liquid(&
         a,ql1,ql2,&   ! Input
         shoc_ql(i,k)) ! Output
+!if(i==7602 .and.shoc_cldfrac(i,k)>0.92 ) print*,'press',k,pres(i,k),qw_first, shoc_ql(i,k),ql1,ql2
 
       ! Compute cloud liquid variance (CLUBB formulation, adjusted to SHOC parameters based)
       call shoc_assumed_pdf_compute_cloud_liquid_variance(&
@@ -3318,6 +3395,8 @@ subroutine shoc_tke(&
 
   ! Interpolate shear term from interface to thermo grid
   call linear_interp(zi_grid,zt_grid,sterm,sterm_zt,nlevi,nlev,shcol,0._rtype)
+  
+  !print*,'in shoc_tke', maxval(tk),minval(tk),maxval(tkh),minval(tkh)
 
   !advance sgs TKE
   call adv_sgs_tke(nlev, shcol, dtime, shoc_mix, wthv_sec, &
@@ -3464,8 +3543,8 @@ subroutine adv_sgs_tke(nlev, shcol, dtime, shoc_mix, wthv_sec, &
   Ce2=Ce/0.7_rtype*0.51_rtype
   Cee=Ce1+Ce2
 
-  a_prod_bu = 0._rtype
-  a_prod_sh = 0._rtype
+  !a_prod_bu = 0._rtype
+  !a_prod_sh = 0._rtype
 
   
   do k = 1, nlev
@@ -3486,6 +3565,9 @@ subroutine adv_sgs_tke(nlev, shcol, dtime, shoc_mix, wthv_sec, &
         ! March equation forward one timestep    
         tke(i,k)=max(mintke,tke(i,k)+dtime* &
        ( max(0._rtype,a_prod_sh(i,k)+a_prod_bu(i,k)) - a_diss(i,k) ) )  
+
+!if(tke(i,k) > 1.) print*,'tke',i,k,a_prod_sh(i,k), a_prod_bu(i,k), tke(i,k), tk(i,k),sterm_zt(i,k)
+!        if(a_prod_sh(i,k) > 1.e-6) stop 'a_prod_sh'
 
         tke(i,k)=min(tke(i,k),maxtke)
      enddo
@@ -3527,8 +3609,8 @@ subroutine isotropic_ts(nlev, shcol, brunt_int, tke, a_diss, brunt, isotropy)
 
   !Parameters
   real(rtype), parameter :: lambda_low   = 0.001_rtype
-  real(rtype), parameter :: lambda_high  = 0.04_rtype
-  real(rtype), parameter :: lambda_slope = 0.65_rtype
+  real(rtype), parameter :: lambda_high  = 0.08_rtype
+  real(rtype), parameter :: lambda_slope = 2.65_rtype
   real(rtype), parameter :: brunt_low    = 0.02_rtype
   real(rtype), parameter :: maxiso       = 20000.0_rtype ! Return to isotropic timescale [s]
 
@@ -3603,8 +3685,8 @@ subroutine eddy_diffusivities(nlev, shcol, obklen, pblh, zt_grid, &
   real(rtype), parameter :: Ckh = 0.1_rtype
   real(rtype), parameter :: Ckm = 0.1_rtype
   ! Default eddy coefficients for stable PBL diffusivities
-  real(rtype), parameter :: Ckh_s_def = 1.0_rtype
-  real(rtype), parameter :: Ckm_s_def = 1.0_rtype
+  real(rtype), parameter :: Ckh_s_def = 0.1_rtype
+  real(rtype), parameter :: Ckm_s_def = 0.1_rtype
   ! Minimum allowable value for stability diffusivities
   real(rtype), parameter :: Ck_s_min = 0.1_rtype
 
@@ -3642,7 +3724,9 @@ subroutine eddy_diffusivities(nlev, shcol, obklen, pblh, zt_grid, &
         endif
 
      enddo
+
   enddo
+!     print*,'in eddy_diffusivities', maxval(tk),minval(tk),maxval(tkh),minval(tkh)
 
            
   return
