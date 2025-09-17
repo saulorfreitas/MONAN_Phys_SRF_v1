@@ -10970,10 +10970,10 @@ module module_cu_gf_monan
             !var2d2(i)    = scale_factor(i)
             !precip_rescaled(i) =  min(1.5, max(scale_factor(i),1.))
         enddo
-        if( use_shear_ctrl_entr == 3 ) then 
+        if( use_shear_ctrl_entr == 3) then 
                precip_rescaled(:) =  min(1.5, max(scale_factor(:),1.))
         endif
-        if( use_shear_ctrl_entr == 4 ) then 
+        if( use_shear_ctrl_entr == 4) then 
                scale_factor(:) = 2.0 - scale_factor(:)
                scale_factor(:) = min(1.,max(scale_factor(:),0.5))
         endif
