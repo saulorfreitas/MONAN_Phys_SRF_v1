@@ -4669,6 +4669,7 @@ module module_cu_gf_monan
          i = get_data_value(vec_ok,vtp_index)
          !- mass flux of updradt at cloud base
          xmb(i) = xmb_ave(i)
+
          !- reescale mass flux based on wind shear
          xmb(i) = xmb(i)*precip_rescaled(i)
 
@@ -10976,6 +10977,7 @@ module module_cu_gf_monan
         if( use_shear_ctrl_entr == 4) then 
                scale_factor(:) = 2.0 - scale_factor(:)
                scale_factor(:) = min(1.,max(scale_factor(:),0.5))
+               entr_rate(:)    = max(scale_factor(:)*entr_rate(:), min_entr_rate)
         endif
         !--- for output only
         var2d2(:)    = scale_factor(:)

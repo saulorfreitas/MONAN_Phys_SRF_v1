@@ -95,7 +95,8 @@
  character(len=StrKIND),pointer:: pbl_scheme
 
 !-----------------------------------------------------------------------------------------------------------------
- call mpas_pool_get_config(configs,'config_pbl_scheme',pbl_scheme)
+ 
+call mpas_pool_get_config(configs,'config_pbl_scheme',pbl_scheme)
 
  if(.not.allocated(hfx_p)  ) allocate(hfx_p(ims:ime,jms:jme)  )
  if(.not.allocated(qfx_p)  ) allocate(qfx_p(ims:ime,jms:jme)  )
@@ -1184,6 +1185,7 @@
        call bl_mynn_init(cp,cpv,cice,cliq,ep_1,ep_2,gravity,karman,P0,R_d,R_v,svp1,svp2,svp3,svpt0, &
                          xlf,xls,xlv,errmsg,errflg)
        call mpas_log_write('--- end subroutine bl_mynn_mpas_init:')
+
     case("bl_shocmf")
       call mpas_log_write('--- enter subroutine shoc_init:')
       call bl_shocmf_init(ims,ime,kms,kme,jms,jme,its,ite,kts,kte,jts,jte,gravity,R_d,R_v,cp,ep_1,xlv, &
