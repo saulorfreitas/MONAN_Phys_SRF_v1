@@ -3402,6 +3402,12 @@
                 <var name="aer_snk_monan" type="real" dimensions="num_aer_monan nCells Time" units="kg m^{-2} s^{-1}"
                      description="areal sink for aerosols of MONAN" packages="aerosols_monan_in"/>
 
+                <var name="aer2d1" type="real" dimensions="nCells Time" units="kg m^{-2} s^{-1}"
+                     description="dummy areal sources/sinks for aerosols of MONAN" packages="aerosols_monan_in"/>
+
+                <var name="aer2d2" type="real" dimensions="nCells Time" units="kg m^{-2} s^{-1}"
+                     description="dummy areal sources/sinks for aerosols of MONAN" packages="aerosols_monan_in"/>
+
                 <var name="aer_ind_monan" type="integer" dimensions="num_aer_monan" units="-"
                      description="mapping between scalars and aerosols" packages="aerosols_monan_in"/>
 

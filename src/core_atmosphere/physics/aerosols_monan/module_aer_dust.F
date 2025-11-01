@@ -59,6 +59,7 @@
  real(kind=RKIND),dimension(:,:)  ,pointer:: aer_src,aer_snk
  real(kind=RKIND),dimension(:,:)  ,pointer:: zz, zgrid
  real(kind=RKIND),dimension(:)    ,pointer:: xland
+ real(kind=RKIND),dimension(:)    ,pointer:: aer2d1,aer2d2
  integer,dimension(:),pointer:: isltyp,ivgtyp
 !local variables:
  integer:: initflag,iCell,k, n_aer
@@ -95,6 +96,10 @@
  call mpas_pool_get_array(diag_physics,'aer_src_monan', aer_src        )
  call mpas_pool_get_array(diag_physics,'aer_snk_monan', aer_snk        )
  
+ call mpas_pool_get_array(diag_physics,'aer2d1', aer2d1        )
+ call mpas_pool_get_array(diag_physics,'aer2d2', aer2d2        )
+
+ 
 !copy all MPAS arrays to rectanguler grid:
 ! call sfclayer_from_MPAS(configs,mesh,diag_physics,sfc_input,its,ite, &
 !                         state,time_lev)
@@ -120,6 +125,9 @@
       if(ivgtyp(iCell) == 2) flux = 4.*flux
    endif
    aer_src(n_aer,iCell) = flux/  (zgrid(k+1,iCell) - zgrid(k,iCell)) / zz(k,iCell) ! unit: kg/m^3/s
+   aer2d1(iCell) =  aer_src(1,iCell)
+   aer2d2(iCell) =  aer_src(1,iCell)
+
  enddo
  
  !---- dust aerosols section
