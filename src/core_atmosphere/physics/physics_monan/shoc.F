@@ -177,7 +177,7 @@ real function MurphyKoop_svp(t, i_type)
 
        write(err_msg,*)'Error: Either MurphyKoop_svp i_type is not 0 or 1 or t=NaN. itype= ', &
             i_type,' and temperature t=',t,' in file: ',__FILE__,' at line:',__LINE__
-       stop err_msg
+       stop 'err_msg'
     endif
 
     return
@@ -327,6 +327,17 @@ subroutine shoc_main ( &
 #endif
 
   implicit none
+! INPUT VARIABLES
+  ! number of SHOC columns in the array
+  integer, intent(in) :: shcol
+  ! number of levels [-]
+  integer, intent(in) :: nlev
+  ! number of levels on interface grid [-]
+  integer, intent(in) :: nlevi
+  ! number of tracers [-]
+  integer, intent(in) :: num_qtracers
+  ! number of times to loop SHOC
+  integer, intent(in) :: nadv
 
   ! DUMMY VARIABLES IN ORDER TO TEST BOTH SHOC VERSIONS
   integer, intent(in) :: itimestep
@@ -364,17 +375,7 @@ subroutine shoc_main ( &
   real(rtype), intent(out) :: wqw_sec_mf(shcol,nlevi)
 
 
-! INPUT VARIABLES
-  ! number of SHOC columns in the array
-  integer, intent(in) :: shcol
-  ! number of levels [-]
-  integer, intent(in) :: nlev
-  ! number of levels on interface grid [-]
-  integer, intent(in) :: nlevi
-  ! number of tracers [-]
-  integer, intent(in) :: num_qtracers
-  ! number of times to loop SHOC
-  integer, intent(in) :: nadv
+
 
   ! SHOC timestep [s]
   real(rtype), intent(in) :: dtime
@@ -2530,7 +2531,7 @@ subroutine shoc_assumed_pdf(&
       call shoc_assumed_pdf_vv_parameters(&
          w_first,w_sec(i,k),w3var,&    ! Input
          Skew_w,w1_1,w1_2,w2_1,w2_2,a) ! Output
-
+!print*,'a=',k,a,w_sec(i,k)
       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       !  FIND PARAMETERS FOR THETAL
 
