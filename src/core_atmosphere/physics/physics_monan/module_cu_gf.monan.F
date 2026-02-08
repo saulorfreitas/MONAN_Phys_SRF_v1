@@ -97,17 +97,14 @@ module module_cu_gf_monan
       ,cum_hei_down_ocean,cum_hei_updf_land, cum_hei_updf_ocean          &
       ,use_momentum_transp,cum_entr_rate                                 &
       ,nmp, lsmp, cnmp,moist_trigger,frac_modis,max_tq_tend              &
-      ,cum_use_excess, cum_ave_layer                                     &
-      ,use_smooth_prof, output_sound,use_cloud_dissipation               &
-      ,cum_use_smooth_tend,beta_sh,c0_shal                               &
-      ,use_linear_subcl_mf,cap_maxs,liq_ice_number_conc                  &
-      ,sig_factor, add_coldpool_prop                                     &
+      ,cum_use_excess, cum_ave_layer,use_smooth_prof, output_sound       &
+      ,use_cloud_dissipation,cum_use_smooth_tend,beta_sh,c0_shal         &
+      ,use_linear_subcl_mf,cap_maxs,liq_ice_number_conc,sig_factor       &
       ,add_coldpool_clos,add_coldpool_trig,mx_buoy1, mx_buoy2, cum_t_star&
-      ,add_coldpool_diff,n_cldrop,use_gustiness, use_random_num          &
-      ,modConvParGF_initialized,use_pass_cloudvol                        &
+      ,n_cldrop,use_random_num,modConvParGF_initialized,use_pass_cloudvol&
       ,use_lcl_ctrl_entr,use_rhu_ctrl_entr,cum_min_cloud_depth,use_sub3d &
       ,cum_fr_min_entr,use_shear_ctrl_entr,use_cwv_ctrl_entr,adv_trigger &
-      ,dcape_threshold,use_cold_start
+      ,dcape_threshold,use_cold_start,tu_buoyx
 
    public makeDropletNumber,makeIceNumber,FractLiqF                      &
       ,coldPoolStart,readGFConvParNML,initModConvParGF,cu_gf_monan_driver&
@@ -177,13 +174,9 @@ module module_cu_gf_monan
 
    integer :: use_memory        != -1/0/1/2 .../10    !-
 
-   integer :: add_coldpool_prop != -1,0,1,2,3 add coldpool propagation
-
    integer :: add_coldpool_clos ! add the the mass flux associated to the W @ leading of the gust front
    
    integer :: add_coldpool_trig ! add triggering criteria based on cold pool presence
-
-   integer :: add_coldpool_diff ! add vert/horizontal diffusion to the cold pool propaga
 
    integer :: use_scale_dep     != 0/1:  scale dependence flag, default = 1
 
@@ -261,8 +254,8 @@ module module_cu_gf_monan
    real    :: tau_land_cp    != cold pool lifetime over land
    real    :: mx_buoy1       !=   250.5 J/kg
    real    :: mx_buoy2       != 20004.0 J/kg: temp exc=10 K, q deficit=4 g/kg (=> mx_buoy ~ 20 kJ/kg)
+   real    :: tu_buoyx
    real    :: use_cloud_dissipation != to acccount for the cloud dissipation at the decayment phase
-   integer :: use_gustiness         != not in use
    real    :: use_random_num        != stochastic pertubation for the height of maximum Zu
    real    :: beta_sh               != only for shallow plume
    integer :: use_linear_subcl_mf   != only for shallow plume
@@ -740,7 +733,7 @@ module module_cu_gf_monan
            !- cloud fraction 
                cnvcf2d (k,i)  = cnvcf(i,k,j) 
                !-buoyancy excess
-               buoyx2d(k,i)  = buoyx(i,k,j) * scbu
+               buoyx2d(k,i)  = buoyx(i,k,j) * tu_buoyx
                !-- turb length scale
                turb_len_scale2d (k,i) = turb_len_scale (i,k,j)
             end do
@@ -1278,7 +1271,7 @@ module module_cu_gf_monan
                do k = kts,kte
                   rbuoyxcuten (i,k,j) = - min(0.,( outbuoy(k,i,shal)                 + &
                                                    outbuoy(k,i, mid)                 + &
-                                                   outbuoy(k,i,deep) ) * fixout_qv(i)) !* scbu
+                                                   outbuoy(k,i,deep) ) * fixout_qv(i)) * tu_buoyx
                   var3d1      (i,k,j) = rbuoyxcuten (i,k,j) 
                enddo
             enddo
@@ -6155,18 +6148,16 @@ module module_cu_gf_monan
          ,c0_deep, qrc_crit,lambau_deep,lambau_shdn,c0_mid                        &
          ,cum_max_edt_land  ,cum_max_edt_ocean, cum_hei_down_land                 &
          ,cum_hei_down_ocean,cum_hei_updf_land, cum_hei_updf_ocean                &
-         ,cum_entr_rate ,tau_deep,tau_mid                                         &
-         ,use_momentum_transp ,moist_trigger,frac_modis                           &
-         ,cum_use_excess,cum_ave_layer,use_smooth_prof                            &
-         ,use_cloud_dissipation,cum_use_smooth_tend,use_gustiness, use_random_num &
-         ,beta_sh,c0_shal,use_linear_subcl_mf,liq_ice_number_conc                 &
-         ,cap_maxs,sig_factor                                                     &
-         ,cum_t_star, convection_tracer, tau_ocea_cp, tau_land_cp                 &
-         ,use_memory, add_coldpool_prop ,mx_buoy1, mx_buoy2,max_tq_tend           &
-         ,add_coldpool_clos,add_coldpool_trig,add_coldpool_diff,n_cldrop          &
+         ,cum_entr_rate ,tau_deep,tau_mid,use_momentum_transp ,moist_trigger      &
+         ,frac_modis,cum_use_excess,cum_ave_layer,use_smooth_prof                 &
+         ,use_cloud_dissipation,cum_use_smooth_tend, use_random_num               &
+         ,beta_sh,c0_shal,use_linear_subcl_mf,liq_ice_number_conc,cap_maxs        &
+         ,sig_factor,cum_t_star, convection_tracer, tau_ocea_cp, tau_land_cp      &
+         ,use_memory ,mx_buoy1, mx_buoy2,max_tq_tend                              &
+         ,add_coldpool_clos,add_coldpool_trig,n_cldrop                            &
          ,output_sound,use_pass_cloudvol,use_lcl_ctrl_entr,use_rhu_ctrl_entr      &
          ,cum_min_cloud_depth,use_sub3d,cum_fr_min_entr,use_shear_ctrl_entr       &
-         ,use_cwv_ctrl_entr,adv_trigger,dcape_threshold,use_cold_start
+         ,use_cwv_ctrl_entr,adv_trigger,dcape_threshold,use_cold_start,tu_buoyx
 
       if(present(IO_NODE)) then 
          local_io_node = IO_NODE
@@ -6251,6 +6242,8 @@ module module_cu_gf_monan
          print*, 'tau_land_cp        ' , tau_land_cp
          print*, 'mx_buoy1 - kJ/kg   ' , mx_buoy1*1.e-3
          print*, 'mx_buoy2 - kJ/kg   ' , mx_buoy2*1.e-3
+         print*, 'tu_buoyx - #       ' , tu_buoyx
+
          print*, 'use_pass_cloudvol  ' , use_pass_cloudvol
          print*, 'use_lcl_ctrl_entr  ' , use_lcl_ctrl_entr
          print*, 'use_rhu_ctrl_entr  ' , use_rhu_ctrl_entr
@@ -6306,7 +6299,6 @@ module module_cu_gf_monan
          print*, 'lightning_diag     ' , lightning_diag
          print*, 'overshoot          ' , real(overshoot          ,4)
          print*, 'liq_ice_number_conc' , liq_ice_number_conc
-         print*, 'use_gustiness      ' , use_gustiness
 
          print*, '!----misc controls'
          print*, 'output_sound       ' , output_sound
@@ -6316,8 +6308,6 @@ module module_cu_gf_monan
          print*, 'clev_grid          ' , clev_grid
          print*, 'vert_discr         ' , vert_discr
          print*, 'max_tq_tend        ' , real(max_tq_tend,4)
-         print*, 'add_coldpool_prop  ' , add_coldpool_prop
-         print*, 'add_coldpool_diff  ' , add_coldpool_diff
          print*, 'use_inv_layers     ' , use_inv_layers
          print*,"========================================================================"
          !call flush(6)
@@ -8625,13 +8615,11 @@ module module_cu_gf_monan
       use_memory        = 0 
       add_coldpool_clos = 4
       add_coldpool_trig = 0
-      add_coldpool_prop = 3 
-      add_coldpool_diff = 3 
       tau_ocea_cp       = 3600. 
       tau_land_cp       = 3600. 
       mx_buoy1          = 250.5   ! J/kg (real(c_cp)*5.0 + real(c_alvl)*2.e-3)*0.025  
-      mx_buoy2          = 20004.0 ! J/kg (real(c_cp)*10.+real(c_alvl)*4.e-3) 
-      use_gustiness     = 0    
+      mx_buoy2          = 20004.0 ! J/kg (real(c_cp)*10.+real(c_alvl)*4.e-3)
+      tu_buoyx          = 1.0
      
       use_sub3d         = 0
       use_scale_dep     = 1 
