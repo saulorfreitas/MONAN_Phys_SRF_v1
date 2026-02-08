@@ -44,8 +44,6 @@
   moist_trigger     = 0,     != 0/1: relative humidity effects on the cap_max trigger function
   adv_trigger       = 0,     != 0/1: adv trigger based on Xie et al 2019.
   dcape_threshold   = 70.,   != CAPE time rate threshold for ADV_TRIGGER (J kg^-1 hr^-1)
-  lcl_trigger       = 0,     != only for shallow: lcl_trigger > 0 activates the LCL trigger which  
-                             != requires the lcl height be lower than the pbl height. 0 turn it off.
 
   cap_maxs          = 50.,   != max- distance (hPa) the air parcel is allowed to go up looking for the LFC
 !---
