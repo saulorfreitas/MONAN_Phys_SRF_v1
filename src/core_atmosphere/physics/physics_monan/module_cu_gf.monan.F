@@ -292,7 +292,7 @@ module module_cu_gf_monan
    integer ::  use_smooth_tend   != default  1,1,1,
 
    integer :: use_cold_start     != 0/1 default 0
-   real    :: fac_cold_start  = 1
+   real    :: fac_cold_start  = 1.0
    !-- General internal controls for the diverse options in GF
 
    logical, parameter :: melt_glac      = .true.  != turn on/off ice phase/melting
@@ -310,7 +310,11 @@ module module_cu_gf_monan
    real, parameter :: pgcon= 0.0
 
    real, parameter ::  delta_ref= 30.e+3  & ! meters
-                      ,entr_ref = 8.e-4     ! ref entrainment for dx = 30000 m
+                      ,entr_ref =  8.e-4     ! ref entrainment for dx = 30000 m
+
+                      real, parameter, dimension(2) :: entr_red  = (/1.,0.333/)
+   
+   real    :: scbu = 1.0 ! <-------------------------
 
    integer, parameter :: MAX_NSPEC=200
    integer           ,dimension(MAX_NSPEC)    :: ind_chem
@@ -328,6 +332,7 @@ module module_cu_gf_monan
    logical :: wrtgrads = .false.
    integer :: nrec = 0, ntimes = 0
    real    :: int_time = 0.
+
 
    integer :: vec_max_size
    !! max size control loop vector can assume
@@ -733,7 +738,7 @@ module module_cu_gf_monan
                !- cloud fraction 
                cnvcf2d (k,i)  = cnvcf(i,k,j) 
                !-buoyancy excess
-               buoyx2d(k,i)  = buoyx(i,k,j)
+               buoyx2d(k,i)  = buoyx(i,k,j) * scbu
                !-- turb length scale
                turb_len_scale2d (k,i) = turb_len_scale (i,k,j)
             end do
@@ -1271,8 +1276,8 @@ module module_cu_gf_monan
                do k = kts,kte
                   rbuoyxcuten (i,k,j) = - min(0.,( outbuoy(k,i,shal)                 + &
                                                    outbuoy(k,i, mid)                 + &
-                                                   outbuoy(k,i,deep) ) *fixout_qv(i))
-                  var3d1   (i,k,j) = rbuoyxcuten (i,k,j) 
+                                                   outbuoy(k,i,deep) ) * fixout_qv(i)) !* scbu
+                  var3d1      (i,k,j) = rbuoyxcuten (i,k,j) 
                enddo
             enddo
          endif
@@ -1717,7 +1722,7 @@ module module_cu_gf_monan
         ,dp,subin,detdo,entup,detup,subdown,entdoj,entupk,detupk,totmas,min_entr_rate   &
         ,tot_time_hr,beta,env_mf,env_mf_p,env_mf_m,dts,denom,denomU
 
-      integer :: ipr=0,jpr=0
+      integer :: ipr=0,jpr=0,step_ent,ii
       integer :: k,i,iedt,nens,nens3,kii,kff
       integer :: vtp_index
       
@@ -1851,21 +1856,44 @@ module module_cu_gf_monan
       !
       call get_kbmax_kdet_k22(cumulus,itf,ktf,its,ite,kts,kte,ierr,ierrc,z1,zo_cup,heo_cup&
                              ,depth_min,z_detr,zkbmax,kbmax,kdet,k22,kstabm)
+      
+
+step_ent = 1
+if( ( entr_rate_input > -1.0 .and. entr_rate_input < 0.0 ) .and. trim(cumulus) == 'deep') step_ent = 2 
+if( ( entr_rate_input == 999.0                           ) .and. trim(cumulus) == 'deep') step_ent = 2 
+
+do ii = 1,step_ent    
       !
       !-- define entrainment/detrainment profiles for updrafts
       !
       !- reescale entrainment rate in terms of the grid spacing (Zhao et al 2024, GRL https://doi.org/10.1029/2024GL110735)
-      if(entr_rate_input < 0.0 .and. trim(cumulus) == 'deep') then 
+      if(entr_rate_input < -1.0 .and. trim(cumulus) == 'deep') then 
          entr_rescaled(:) = (delta_ref/dx(:))**0.2 * fac_cold_start
          entr_rate    (:) = entr_ref * entr_rescaled(:)
          min_entr_rate    = entr_ref * fr_min_entr * minval(entr_rescaled)
          overshoot_rescaled(:) = min(0.7, overshoot * entr_rescaled(:))
          !t_star = 0.8/maxval(entr_rescaled)
+
+      elseif( ( entr_rate_input > -1.0 .and. entr_rate_input < 0.0 ) .and. trim(cumulus) == 'deep') then 
+         entr_rate(:)  = abs(entr_rate_input) * fac_cold_start * entr_red(ii)
+         min_entr_rate = abs(entr_rate_input) * fr_min_entr    * entr_red(ii)
+         overshoot_rescaled(:) = 0.2
+         !print*,'STEPENTA',ii, abs(entr_rate_input) , entr_red(ii),maxval(overshoot_rescaled)
+
+      elseif(  entr_rate_input == 999.0 .and. trim(cumulus) == 'deep') then 
+         entr_rescaled(:) = (delta_ref/dx(:))**0.2 * fac_cold_start 
+         entr_rate    (:) = 1.5*entr_ref * entr_rescaled(:) * entr_red(ii)
+         min_entr_rate    = 1.5*entr_ref * fr_min_entr * minval(entr_rescaled)
+         overshoot_rescaled(:) =0.2
+         print*,'ENT+9999:',ii, entr_red(ii),maxval(entr_rate),trim(cumulus) 
+
       else
-      !-- initial entrainment rate and the mininum acceptable entrainment rate
+         !-- initial entrainment rate and the mininum acceptable entrainment rate
          entr_rate(:)  = entr_rate_input * fac_cold_start
          min_entr_rate = entr_rate_input * fr_min_entr
          overshoot_rescaled(:) = overshoot * fac_cold_start
+         !print*,'STEPENTB',ii, abs(entr_rate_input), overshoot
+
       endif
       ! 
       !-- controls of LCL and PBL turbulence on the entrainment rate
@@ -1939,7 +1967,12 @@ module module_cu_gf_monan
                            ,klcl,kbcon,ktop,depth_neg_buoy,frh_bcon,start_level,use_excess,max_ktop &
                            ,zqexec,ztexec,x_add_buoy,xland,cnvcf,heso,wlpool,overshoot_rescaled     &
                            ,itf,ktf,its,ite, kts,kte)
-      !
+      
+      
+   enddo !step 1,2
+      
+      
+                           !
       !--- scale dependence factor (sig)
       !
       call set_scale_dep_factor(cumulus,USE_SCALE_DEP,DOWNDRAFT,its,ite,itf,kts,kte,ktf   &
@@ -2455,13 +2488,13 @@ module module_cu_gf_monan
         !var2d1(:) = aa1(:)
         !var2d2(:) = aa1_bl(:)
          var2d1(:) = vshear2(:)
-        !var2d1(:) = x_add_buoy(:)
+         var2d2(:) = x_add_buoy(:)
          if( adv_trigger == 0 .and. convection_tracer == 1) then 
             do i=its,itf
                ! var2d2(i) = maxval( buoy_exc(kts:ktop(i),i) )
                !var2d1(i) = p_cwv_ave(i)
             enddo
-         endif 
+         endif
          !var2d2(:) = 0.0
          do vtp_index = get_num_elements(vec_ok),1,-1
             i = get_data_value(vec_ok,vtp_index)
