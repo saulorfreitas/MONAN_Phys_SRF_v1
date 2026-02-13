@@ -305,10 +305,7 @@ module module_cu_gf_monan
    !--- new entrainment formulation which uses the lateral entrainment rate as a trigger function
    real, parameter ::  delta_ref= 30.e+3  & ! meters
                       ,entr_ref = 1.2e-3     ! ref entrainment for dx = 30000 m
-
-                      real, parameter, dimension(2) :: entr_red  = (/1.,0.333/)
-   
-   real    :: scbu = 1.0 ! <-------------------------
+   real, parameter, dimension(2) :: entr_red  = (/1.,0.333/)
 
    !--- for tracer transport
    integer, parameter :: MAX_NSPEC=200
@@ -730,7 +727,7 @@ module module_cu_gf_monan
                !- horiz wind velocities
                us      (k,i)  =  u (i,k,j)
                vs      (k,i)  =  v (i,k,j)
-           !- cloud fraction 
+               !- cloud fraction 
                cnvcf2d (k,i)  = cnvcf(i,k,j) 
                !-buoyancy excess
                buoyx2d(k,i)  = buoyx(i,k,j) * tu_buoyx
