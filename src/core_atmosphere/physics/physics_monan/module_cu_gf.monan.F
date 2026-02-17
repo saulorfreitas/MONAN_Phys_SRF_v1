@@ -728,9 +728,9 @@ module module_cu_gf_monan
                us      (k,i)  =  u (i,k,j)
                vs      (k,i)  =  v (i,k,j)
                !- cloud fraction 
-               cnvcf2d (k,i)  = cnvcf(i,k,j) 
+               cnvcf2d (k,i)  = cnvcf(i,k,j) * tu_buoyx
                !-buoyancy excess
-               buoyx2d(k,i)  = buoyx(i,k,j) * tu_buoyx
+               buoyx2d(k,i)   = buoyx(i,k,j) * tu_buoyx
                !-- turb length scale
                turb_len_scale2d (k,i) = turb_len_scale (i,k,j)
             end do
@@ -1309,6 +1309,12 @@ module module_cu_gf_monan
                                           up_massdetr5d(k,i,j,mid )                + &
                                           up_massdetr5d(k,i,j,deep) ) *fixout_qv(i)  &
                                         /(dz8w(i,k,j) * rho(i,k,j))
+                  !--- adding in-updraft cloud fraction
+                  rcnvcfcuten (i,k,j) = rcnvcfcuten (i,k,j)                          + &
+                                        ( conv_cld_fr5d(k,i,j,shal)                  + &
+                                          conv_cld_fr5d(k,i,j,mid )                  + &
+                                          conv_cld_fr5d(k,i,j,deep) ) *fixout_qv(i) / dt
+                  rcnvcfcuten (i,k,j) = rcnvcfcuten (i,k,j) * tu_buoyx
               enddo
             enddo
          endif
@@ -1713,7 +1719,6 @@ module module_cu_gf_monan
         ,massfld,dh,trash,frh,xlamdd,radiusd,frhd,effec_entrain,detdo1,detdo2,entdo     &
         ,dp,subin,detdo,entup,detup,subdown,entdoj,entupk,detupk,totmas,min_entr_rate   &
         ,tot_time_hr,beta,env_mf,env_mf_p,env_mf_m,dts,denom,denomU
-
       integer :: ipr=0,jpr=0,step_ent,ii
       integer :: k,i,iedt,nens,nens3,kii,kff
       integer :: vtp_index
@@ -2236,7 +2241,7 @@ module module_cu_gf_monan
                     i = get_data_value(vec_ok,vtp_index)
                  
                     kii=start_level(i) ; kff=ktop(i)
-                    if(use_pass_cloudvol == 2) then 
+                    if(use_pass_cloudvol == 1) then 
                         xh_env_eff(kii:kff) = (1.-cnvcf(kii:kff,i))*xhe(kii:kff,i) + cnvcf(kii:kff,i)*xhes(kii:kff,i)
                     else
                         xh_env_eff(kii:kff) = xhe(kii:kff,i)
@@ -2433,6 +2438,7 @@ module module_cu_gf_monan
          do k=kts,ktf
             tup   (k,i) = tempco(k,i) !in-updraft temp
             cupclw(k,i) = qrco  (k,i) !in-updraft condensed water
+            clfrac(k,i) = (xmb(i)/sig(i)) * zuo(k,i) / (rho(k,i)*vvel2d(k,i)) !in-updradt cloud fraction
          end do
          tup (kte,i) = t_cup(kte,i)
       end do
@@ -2444,28 +2450,26 @@ module module_cu_gf_monan
         !var2d2(:) = aa1_bl(:)
          var2d1(:) = vshear2(:)
          var2d2(:) = x_add_buoy(:)
-         if( adv_trigger == 0 .and. convection_tracer == 1) then 
-            do i=its,itf
+         !if( adv_trigger == 0 .and. convection_tracer == 1) then 
+         !   do i=its,itf
                ! var2d2(i) = maxval( buoy_exc(kts:ktop(i),i) )
                !var2d1(i) = p_cwv_ave(i)
-            enddo
-         endif
-         !var2d2(:) = 0.0
+         !   enddo
+         !endif
+         var2d2(:) = 0.0
          do vtp_index = get_num_elements(vec_ok),1,-1
             i = get_data_value(vec_ok,vtp_index)
             trash = 1.e-12
             do k=kts,ktop(i)          
                   dp=100.*(po_cup(k,i)-po_cup(k+1,i))
                   trash=trash+dp
-                  !if(use_pass_cloudvol > 0 ) &
-                  !var2d2(i) = var2d2(i) + cnvcf(k,i)*dp/c_grav
+                  if(use_pass_cloudvol > 0 ) var2d2(i) = var2d2(i) + cnvcf(k,i)*dp/c_grav
                   
                   !var2d2(i) = var2d2(i) + entr_rate_2d(k,i)*dp
-                  
                   !if(use_pass_cloudvol == 0 ) &
                   !var2d1(i) = var2d1(i) + entr_rate_2d_initial(k,i)*dp
             enddo
-            !var2d2(i) = var2d2(i)/trash 
+            var2d2(i) = var2d2(i)/trash 
             !var2d1(i) = var2d1(i)/trash 
          enddo
       endif
@@ -3326,7 +3330,7 @@ module module_cu_gf_monan
       do vtp_index = get_num_elements(vec_ok),1,-1
          i = get_data_value(vec_ok,vtp_index)
          kii=start_level(i) ; kff=ktop(i)
-         if(use_pass_cloudvol == 2) then 
+         if(use_pass_cloudvol == 1) then 
               q_env_eff(kii:kff) = (1.-cnvcf(kii:kff,i))*q(kii:kff,i) + cnvcf(kii:kff,i)*qes(kii:kff,i)
          else
               q_env_eff(kii:kff) = q(kii:kff,i)
@@ -4280,7 +4284,7 @@ module module_cu_gf_monan
       x_add      (:) = c_alvl*zqexec(:) + c_cp*ztexec(:) + x_add_buoy(:)
       start_level(:) = start_level_(:)
 
-      if(use_pass_cloudvol == 2) then
+      if(use_pass_cloudvol == 1) then
            h_env_eff(:,:) = (1.-cnvcf(:,:))*heo(:,:) + cnvcf(:,:)*heso(:,:)
       else
            h_env_eff(:,:) = heo(:,:)
@@ -4369,8 +4373,8 @@ module module_cu_gf_monan
       
       !--- check cloud top for deep convection
       if(cumulus == 'deep') then
-            min_deep_top=500.
-            if(icumulus_gf(mid) == OFF) min_deep_top=600.
+            min_deep_top=500. ! mbar 
+            if(icumulus_gf(mid) == OFF) min_deep_top=600. ! mbar
             do vtp_index = get_num_elements(vec_ok),1,-1
                i = get_data_value(vec_ok,vtp_index)
                cloud_depth =  po_cup(kbcon(i),i)-po_cup(ktop(i),i)
@@ -4427,13 +4431,13 @@ module module_cu_gf_monan
                          ,wlpool,wlpool_bcon)
 
       implicit none
-      integer                  ,intent (in   )  ::  itf,ktf,its,ite, kts,kte
-      real,    dimension (:,:) ,intent (in   )  ::  z,z_cup,zu,gamma_cup,t_cup,dby &
+      integer                  ,intent (in   ) ::  itf,ktf,its,ite, kts,kte
+      real,    dimension (:,:) ,intent (in   ) ::  z,z_cup,zu,gamma_cup,t_cup,dby &
                                                    ,entr_rate_2d,cd,tempco,qco,qrco,qo
 
-      integer, dimension (:)   ,intent (in   )  ::  klcl,kbcon,ktop,start_level
-      real,    dimension (:)   ,intent (in   )  ::  zws
-      real,    dimension (:)   ,intent (inout)  ::  wlpool
+      integer, dimension (:)   ,intent (in   ) ::  klcl,kbcon,ktop,start_level
+      real,    dimension (:)   ,intent (in   ) ::  zws
+      real,    dimension (:)   ,intent (inout) ::  wlpool
 
       ! input and output
       integer, dimension (:)   ,intent (inout) ::  ierr
@@ -7062,8 +7066,9 @@ module module_cu_gf_monan
       !-- local vars
       integer :: i,k,vtp_index
       real    :: crh1 = 1.3, crh2 = 1.6 , fq = 1.0
+      real, parameter :: width = 0.1, turncf = 0.4
       real, dimension(kts:kte,its:ite) :: rh2d,entr_frh2d,detr_frh2d
-
+      
       do i=its,itf
         entr_rate_2d(:,i) = entr_rate  (i)
         cd          (:,i) = entr_rate  (i)
@@ -7076,15 +7081,19 @@ module module_cu_gf_monan
            i = get_data_value(vec_ok,vtp_index)
            rh2d(:,i) = min(qo_cup(:,i)/qeso_cup(:,i),1.)
          enddo
-      
+
          if(use_pass_cloudvol == 1) then
-            crh1 = 1.3 ; crh2 = 1.6
+            crh1 = 1.0 ; crh2 = 1.3
             !-- The Role of Passive Cloud Volumes in the Transition 
             !-- From Shallow to Deep Atmospheric Convection - GRL 2023
             do vtp_index = get_num_elements(vec_ok),1,-1
                i = get_data_value(vec_ok,vtp_index)
-               !--effective RH =   environmental         + saturated 
-               rh2d(:,i) = (1. - cnvcf(:,i)) * rh2d(:,i) + cnvcf(:,i)*1.0 
+
+               !rh2d(:,i) = min(0.6666,cnvcf(:,i)*1.0)
+               do k=kts,ktf  
+                  rh2d(k,i) = (1.5 + atan((cnvcf(k,i) - turncf)/width))/3.
+                  rh2d(k,i) = min(0.666,rh2d(k,i))
+               enddo
             enddo
          endif
 
@@ -7094,7 +7103,7 @@ module module_cu_gf_monan
                entr_frh2d(:,i) = crh1 - rh2d(:,i)
                detr_frh2d(:,i) = crh2 - rh2d(:,i)
          enddo
-         
+
          do vtp_index = get_num_elements(vec_ok),1,-1
               i = get_data_value(vec_ok,vtp_index)
               do k=kts,ktf    
@@ -7105,7 +7114,8 @@ module module_cu_gf_monan
                  cd(k,i)           = 0.75e-4*detr_frh2d(k,i)
               enddo
          enddo
-
+        ! print*,'entr2',i,maxval( entr_rate_2d(:,:)),minval(entr_rate_2d(:,:)),maxval(entr_frh2d(:,:)),minval(entr_frh2d(:,:))
+        ! print*,'entr3',i,maxval( cnvcf(:,:)),minval(cnvcf(:,:))
       else ! no RH control on entr/detr rates
          
          do vtp_index = get_num_elements(vec_ok),1,-1
@@ -7538,7 +7548,7 @@ module module_cu_gf_monan
                hco(k,i) = hkbo(i)
          enddo
          kii=start_level(i) ; kff=ktop(i)
-         if(use_pass_cloudvol == 2) then
+         if(use_pass_cloudvol == 1) then
               h_env_eff(kii:kff) = (1.-cnvcf(kii:kff,i))*heo(kii:kff,i) + cnvcf(kii:kff,i)*heso(kii:kff,i)
          else
               h_env_eff(kii:kff) = heo(kii:kff,i)
@@ -7617,7 +7627,7 @@ module module_cu_gf_monan
       do vtp_index = get_num_elements(vec_ok),1,-1
          i = get_data_value(vec_ok,vtp_index)
          kii=start_level(i) ; kff=ktop(i)
-         if(use_pass_cloudvol == 2) then
+         if(use_pass_cloudvol == 1) then
             h_env_eff (kii:kff) = (1.-cnvcf(kii:kff,i))*he (kii:kff,i) + cnvcf(kii:kff,i)*hes (kii:kff,i)
             h_env_effo(kii:kff) = (1.-cnvcf(kii:kff,i))*heo(kii:kff,i) + cnvcf(kii:kff,i)*heso(kii:kff,i)
          else

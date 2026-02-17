@@ -1697,6 +1697,7 @@
  real(kind=RKIND),dimension(:),pointer:: wlpool,vcpool,u_gustfront,v_gustfront
  real(kind=RKIND),dimension(:),pointer:: dp_dens,sh_dens,cg_dens
  real(kind=RKIND),dimension(:),pointer:: acc_dp_dens,acc_sh_dens,acc_cg_dens
+ real(kind=RKIND),dimension(:),pointer:: hpbl
 
  real(kind=RKIND),dimension(:,:),pointer:: umcl,vmcl
  real(kind=RKIND),dimension(:,:),pointer:: rumcl
@@ -1711,16 +1712,15 @@
 !local variables and arrays for the 'cu_gf_monan':
  integer:: i,k,j,k_amb_wind
  real(kind=RKIND),parameter:: alp = 0.5                      ! semi-implicit, 1=explicit
- real(kind=RKIND),parameter:: tau_cloud_diss0 = 7.*60.      ! seconds
- real(kind=RKIND),parameter:: width  = 1000.                 ! meters
- real(kind=RKIND),parameter:: turncf = 2000.                 ! meters above local terrain
+ real(kind=RKIND),parameter:: tau_cloud_diss0 = 20.*60.      ! seconds
+ real(kind=RKIND),parameter:: width  = 400.                  ! meters
  real(kind=RKIND),parameter:: Kfr = 0.9                      ! internal Froude number 
  real(kind=RKIND),parameter:: epsx = 100.                    ! threshold 
  real(kind=RKIND),parameter:: slope_pool = 45.*(3.1416/180.) ! using mean value of Reif et al 2020
  real(kind=RKIND),parameter:: startlev = 1000.               ! meters above local surface
  real(kind=RKIND),parameter:: endlev   = 4000.               ! meters above local surface
 
- real(kind=RKIND):: vert_scale_diss,tau_cloud_diss,htopx,snk,src,tau_cp,denom 
+ real(kind=RKIND):: vert_scale_diss,tau_cloud_diss,htopx,snk,src,tau_cp,denom,OneMinusRH,turncf
  real(kind=RKIND):: total_dz,H_env,gama,temp, rvap, press, qes, zlevel, dzrho, aux, MCL_speed
 !-----------------------------------------------------------------------------------------------------------------
 
@@ -1751,11 +1751,12 @@
     case ("cu_gf_monan")      
       !--- update the accumulated lightning density at the end of each dynamic time-step:
       !--- if(lightning_diag == 1) then -- for future
-      call mpas_pool_get_array(diag_physics,'lightn_dens'      ,lightn_dens)
-      call mpas_pool_get_array(diag_physics,'acc_lightn_dens'  ,acc_lightn_dens)
-      call mpas_pool_get_array(diag_physics,'dp_dens'    ,dp_dens )
-      call mpas_pool_get_array(diag_physics,'sh_dens'    ,sh_dens )
-      call mpas_pool_get_array(diag_physics,'cg_dens'    ,cg_dens )
+      call mpas_pool_get_array(diag_physics,'lightn_dens'     ,lightn_dens     )
+      call mpas_pool_get_array(diag_physics,'acc_lightn_dens' ,acc_lightn_dens )
+
+      call mpas_pool_get_array(diag_physics,'dp_dens'    ,dp_dens     )
+      call mpas_pool_get_array(diag_physics,'sh_dens'    ,sh_dens     )
+      call mpas_pool_get_array(diag_physics,'cg_dens'    ,cg_dens     )
       call mpas_pool_get_array(diag_physics,'acc_dp_dens',acc_dp_dens )
       call mpas_pool_get_array(diag_physics,'acc_sh_dens',acc_sh_dens )
       call mpas_pool_get_array(diag_physics,'acc_cg_dens',acc_cg_dens )
@@ -1775,31 +1776,37 @@
           call mpas_pool_get_dimension(state,'index_cnvcf',index_cnvcf)
           call mpas_pool_get_array(state,'scalars',scalars,time_lev)
           cnvcf => scalars(index_cnvcf,:,:)
+
           !-- get the cnvcf tendency from convection 
           call mpas_pool_get_array(tend_physics,'rcnvcfcuten',rcnvcfcuten)
 
-          call mpas_pool_get_array(sfc_input,'xland' ,xland )
-          call mpas_pool_get_array(mesh,     'zgrid' ,zgrid )
-          call mpas_pool_get_array(diag,     'relhum',rh    )! pct 
+          call mpas_pool_get_array(sfc_input,   'xland' ,xland)
+          call mpas_pool_get_array(mesh,        'zgrid' ,zgrid)
+          call mpas_pool_get_array(diag,        'relhum',rh   )! pct 
+          call mpas_pool_get_array(diag_physics,'hpbl'  ,hpbl )
 
           do i = its,ite
-              htopx = zgrid(1,i) !- local terrain
+              htopx  = zgrid(1,i) !- local terrain
+              turncf = hpbl(i) + htopx
+
               do k = kts,kte
-                !-- this goes from 1 to 0.1 as the height goes from the local surface height to the upper levels
-                vert_scale_diss = 1._RKIND/(1.5_RKIND+atan(2._RKIND*(zgrid(k,i) - htopx - turncf)/width))/3.      
-                vert_scale_diss = max(min (vert_scale_diss,1.) , 0.15_RKIND) ! = 1. to turn off vertical variation
+                OneMinusRH = (1.0_RKIND - min(1.0_RKIND , 0.01_RKIND*rh(k,i))) ! must be in [0,1]
+
+                !---- this goes from 1 to 0.1 as the height goes from the local surface height to the upper levels
+                vert_scale_diss = 1._RKIND/(1.5_RKIND+atan(2._RKIND*(zgrid(k,i) - turncf)/width))
+                vert_scale_diss = max(min (vert_scale_diss,1._RKIND), 0.40_RKIND) ! = 1. to turn off vertical variation
                 tau_cloud_diss = tau_cloud_diss0/vert_scale_diss
                 
                 !---- sink term for cloud fraction
-                snk = dt_dyn * (1._RKIND/tau_cloud_diss) * (1.0_RKIND - 0.01_RKIND*rh(k,i)) * abs(cnvcf(k,i))
+                snk = dt_dyn * (1._RKIND/tau_cloud_diss) * OneMinusRH * abs(cnvcf(k,i))
  
                 !---- source term for cloud fraction
                 src = dt_dyn * rcnvcfcuten(k,i)
- 
-                !- using semi-impl formulation;
-                !- f(t+dt)  = ( f(t) - (dt/tau)* (alp* f(t)) ] / (1+(dt/tau)* (1-alp))
-                denom = 1._RKIND + (1._RKIND-alp)*src + (1.-alp)*(1._RKIND-0.01_RKIND*rh(k,i))*dt_dyn/tau_cloud_diss
-
+                
+                !---- using semi-impl formulation;
+                !---- f(t+dt)  = [ f(t) - (dt/tau)* (alp* f(t)) ] / (1+(dt/tau)* (1-alp))
+                denom = 1._RKIND + (1._RKIND-alp)*src + (1._RKIND-alp)*OneMinusRH*dt_dyn/tau_cloud_diss
+                !---- source term for cloud fraction
                 !---- update cnvcf
                 cnvcf(k,i) = ( cnvcf(k,i) - alp*snk + (1._RKIND-alp*cnvcf(k,i))*src )/denom
                 
