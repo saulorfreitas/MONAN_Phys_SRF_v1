@@ -1784,11 +1784,11 @@ module module_cu_gf_monan
       endif
       !----------------------------------------------------------------------
       !
-      !-- init the vector vec_ok with the all indexes to process
+      !--- init the vector vec_ok with the all indexes to process
       vec_max_size = ite - its + 1
       call init(vec_ok, vec_max_size)
       call insert_range(vec_ok, its, ite)
-      !-- vec removed will be inserted when removing
+      !--- vec removed will be inserted when removing
       call init(vec_removed, vec_max_size)
 
       !
@@ -1800,7 +1800,7 @@ module module_cu_gf_monan
       call get_lambdaU(cumulus,itf,ktf,its,ite,kts,kte,lambau_dp,lambau_dn        &
                       ,lambau_deep,lambau_shdn,pgcon)
       !
-      !-- init/reset 1-d and 2-d local vars
+      !--- init/reset 1-d and 2-d local vars
       call reset_1d(its,ite,ierrc,xland,xland1,aa0,aa1,aa2,aa3                    &
                    ,aa1_bl,aa1_fa,aa0_bl,q_adv,aa1_radpbl,alpha_adv,cin1          &
                    ,xk_x,edt,edto,tau_bl,q_wetbulb,t_wetbulb,tau_ecmwf,xf_dicycle &
@@ -1814,7 +1814,7 @@ module module_cu_gf_monan
       if( cumulus == 'deep' .and. use_random_num > 1.e-6) &
          call gen_random(its,ite,use_random_num,random)
       !
-      !-- define limits of evaporation by the downdrafts
+      !--- define limits of evaporation by the downdrafts
       call get_edt(cumulus,itf,ktf,its,ite,kts,kte,xland,edtmin,edtmax,max_edt_ocean,max_edt_land &
                   ,c0_mid)  
       !
@@ -1844,36 +1844,36 @@ module module_cu_gf_monan
                        ,heso_cup,zo_cup,po_cup,gammao_cup ,tn_cup,psur,tsur,ierr,z1            &
                        ,itf,ktf,its,ite, kts,kte)
       !
-      !-- partition between liq/ice cloud contents
+      !--- partition between liq/ice cloud contents
       !
       call get_partition_liq_ice(ierr,tn,z1,zo_cup,po_cup,p_liq_ice,melting_layer &
                                 ,itf,ktf,its,ite,kts,kte,cumulus)
       !
-      !-- get several indexes
+      !--- get several indexes
       !
       call get_kbmax_kdet_k22(cumulus,itf,ktf,its,ite,kts,kte,ierr,ierrc,z1,zo_cup,heo_cup&
                              ,depth_min,z_detr,zkbmax,kbmax,kdet,k22,kstabm)
       !
-      !-- define entrainment/detrainment profiles for updrafts
+      !--- define entrainment/detrainment profiles for updrafts
       !
       step_ent = 1;   if(entr_rate_input < 0.0) step_ent = 2 
 
       loop_entr_trigger: do ii = 1,step_ent    
            !
-           !-- initial entrainment rate and the mininum acceptable entrainment rate
-           !-- formulation 1: reescale entrainment rate in terms of the grid spacing (Zhao et al 2024, GRL https://doi.org/10.1029/2024GL110735)
-           !- and also use larger initial entrainment rate as trigger function
+           !--- define the initial entrainment rate and the mininum acceptable entrainment rate
+           !--- formulation 1: reescale entrainment rate in terms of the grid spacing (Zhao et al 2024, GRL https://doi.org/10.1029/2024GL110735)
+           !--- and also use larger initial entrainment rate as trigger function
            if(  entr_rate_input < 0.0 ) then 
               entr_rescaled(:) = (delta_ref/dx(:))**0.2 * fac_cold_start 
               entr_rate    (:) = entr_ref * entr_rescaled(:) * entr_red(ii)
               min_entr_rate    = entr_ref * fr_min_entr * minval(entr_rescaled)
            else
-           !-- formulation 2: using the namelist definition      
+           !--- formulation 2: using the namelist definition      
               entr_rate(:)  = entr_rate_input * fac_cold_start
               min_entr_rate = entr_rate_input * fr_min_entr
            endif
            ! 
-           !-- controls of LCL and PBL turbulence on the entrainment rate
+           !--- controls of LCL and PBL turbulence on the entrainment rate
            if(use_lcl_ctrl_entr > 0 ) then 
               call get_lcl2(cumulus,ave_layer,its,ite,itf,kts,kte,ktf,ierr,zqexec,ztexec,xland &
                            ,po,t_cup,p_cup,z_cup,q_cup,k22,klcl,kpbl,psur,zlcl_sfc)
@@ -1881,7 +1881,7 @@ module module_cu_gf_monan
                                                   ,entr_rate,zlcl_sfc,turb_len_scale)
            endif
            !
-           !-- cold pool parameterization and convective memory
+           !--- cold pool parameterization and convective memory
            !
            if (convection_tracer == 1 .and. trim(cumulus) /= 'shallow') then
               call coldPoolConvMem(cumulus,its,itf,kts,kte,ktf,ztexec,zqexec,xland,po,buoy_exc &
@@ -1893,12 +1893,12 @@ module module_cu_gf_monan
                                   ,min_entr_rate,entr_rate, vshear2,var2d2,qo,x_add_buoy,zqexec,precip_rescaled &
                                   ,overshoot,mpas_cape,mpas_cin)
            !
-           !-- get the pickup of ensemble ave prec, following Neelin et al 2009.
+           !--- get the pickup of ensemble ave prec, following Neelin et al 2009.
            if( use_cwv_ctrl_entr == 1 .and. trim(cumulus) == 'deep') &
               call precip_cwv_factor(itf,ktf,its,ite,kts,kte,ierr,tn,po,qo,po_cup,cumulus,p_cwv_ave &
                                     ,min_entr_rate,entr_rate,var2d1)
            !
-           !-- determine LCL for the air parcels around K22
+           !--- determine LCL for the air parcels around K22
            !
            call get_lcl(cumulus,convection_tracer,use_memory,ave_layer,its,ite,itf,kts,kte,ktf,ierr &
                        ,x_add_buoy,zqexec,ztexec,xland,po,t_cup,p_cup,z_cup,q_cup,k22,klcl)
@@ -1907,8 +1907,7 @@ module module_cu_gf_monan
            !
            start_level(:)=  KLCL(:) !start_level(:)=  KTS
            !
-           !--- determine the vertical entrainment/detrainment rates, the level of convective cloud base -kbcon-
-           !--- and the scale dependence factor (sig).
+           !--- determine the vertical entrainment/detrainment profiles
            !
            call set_entr_detr_rates(cumulus,its,ite,itf,kts,kte,ktf,ierr,klcl,min_entr_rate,entr_rate &
                                    ,entr_rate_2d,cd,mentrd_rate,cdd,qo_cup, qeso_cup,cnvcf,zo_cup)
@@ -1923,7 +1922,7 @@ module module_cu_gf_monan
               call get_cloud_bc(cumulus,ave_layer,kts,kte,ktf,xland(i),po(kts:kte,i),heo_cup(kts:kte,i),hkbo(i),k22(i),x_add)
            enddo
            !
-           !--- determine the level of convective cloud base  - kbcon
+           !--- determine the level of convective cloud base  - kbcon, cloud top - ktop
            !
            call cup_cloud_limits(cumulus,ierrc,ierr,cap_max_increment,cap_max,heo_cup,heso_cup,qo_cup    &
                                 ,qeso_cup,po,po_cup,zo_cup,heo,hkbo,qo,qeso,entr_rate_2d,hcot,k22,kbmax  &
