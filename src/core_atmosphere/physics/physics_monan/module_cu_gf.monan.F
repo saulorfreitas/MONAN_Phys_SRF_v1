@@ -306,7 +306,7 @@ module module_cu_gf_monan
    real, parameter ::  delta_ref= 30.e+3  & ! meters
                       ,entr_ref = 1.2e-3     ! ref entrainment for dx = 30000 m
    real, parameter, dimension(2) :: entr_red  = (/1.,0.333/)
-
+   !
    !--- for tracer transport
    integer, parameter :: MAX_NSPEC=200
    integer           ,dimension(MAX_NSPEC)    :: ind_chem
@@ -728,7 +728,7 @@ module module_cu_gf_monan
                us      (k,i)  =  u (i,k,j)
                vs      (k,i)  =  v (i,k,j)
                !- cloud fraction 
-               cnvcf2d (k,i)  = cnvcf(i,k,j) * tu_buoyx
+               cnvcf2d (k,i)  = cnvcf(i,k,j) ! * tu_buoyx
                !-buoyancy excess
                buoyx2d(k,i)   = buoyx(i,k,j) * tu_buoyx
                !-- turb length scale
@@ -1314,7 +1314,7 @@ module module_cu_gf_monan
                                         ( conv_cld_fr5d(k,i,j,shal)                  + &
                                           conv_cld_fr5d(k,i,j,mid )                  + &
                                           conv_cld_fr5d(k,i,j,deep) ) *fixout_qv(i) / dt
-                  rcnvcfcuten (i,k,j) = rcnvcfcuten (i,k,j) * tu_buoyx
+                 ! rcnvcfcuten (i,k,j) = rcnvcfcuten (i,k,j) * tu_buoyx
               enddo
             enddo
          endif
