@@ -305,6 +305,8 @@ module module_cu_gf_monan
    !--- new entrainment formulation which uses the lateral entrainment rate as a trigger function
    real, parameter ::  delta_ref= 30.e+3  & ! meters
                       ,entr_ref = 1.2e-3     ! ref entrainment for dx = 30000 m
+   !                  ,entr_ref = 0.8e-3     ! ref entrainment for dx = 30000 m
+
    real, parameter, dimension(2) :: entr_red  = (/1.,0.333/)
    !
    !--- for tracer transport
@@ -1202,8 +1204,7 @@ module module_cu_gf_monan
          !                ,maxval(outq (:,i,deep))*86400.*2.5e+6/1000.4
          ! stop 333
          !endif
-         !enddo
-
+         !enddo 
          !-- deep + shallow + mid convection
          do i = its,itf
             if(do_this_column(i,j) == 0) cycle
@@ -2448,29 +2449,29 @@ module module_cu_gf_monan
         !var2d1(:) = aa1(:)
         !var2d2(:) = aa1_bl(:)
          var2d1(:) = vshear2(:)
-         var2d2(:) = x_add_buoy(:)
+        !var2d2(:) = x_add_buoy(:)
          !if( adv_trigger == 0 .and. convection_tracer == 1) then 
          !   do i=its,itf
-               ! var2d2(i) = maxval( buoy_exc(kts:ktop(i),i) )
-               !var2d1(i) = p_cwv_ave(i)
+         !      var2d2(i) = maxval( buoy_exc(kts:ktop(i),i) )
+         !      var2d1(i) = p_cwv_ave(i)
          !   enddo
          !endif
-         var2d2(:) = 0.0
-         do vtp_index = get_num_elements(vec_ok),1,-1
-            i = get_data_value(vec_ok,vtp_index)
-            trash = 1.e-12
-            do k=kts,ktop(i)          
-                  dp=100.*(po_cup(k,i)-po_cup(k+1,i))
-                  trash=trash+dp
-                  if(use_pass_cloudvol > 0 ) var2d2(i) = var2d2(i) + cnvcf(k,i)*dp/c_grav
-                  
-                  !var2d2(i) = var2d2(i) + entr_rate_2d(k,i)*dp
-                  !if(use_pass_cloudvol == 0 ) &
-                  !var2d1(i) = var2d1(i) + entr_rate_2d_initial(k,i)*dp
-            enddo
-            var2d2(i) = var2d2(i)/trash 
+         !var2d2(:) = 0.0
+         !do vtp_index = get_num_elements(vec_ok),1,-1
+         !   i = get_data_value(vec_ok,vtp_index)
+         !   trash = 1.e-12
+         !   do k=kts,ktop(i)          
+         !         dp=100.*(po_cup(k,i)-po_cup(k+1,i))
+         !         trash=trash+dp
+         !         if(use_pass_cloudvol > 0 ) var2d2(i) = var2d2(i) + cnvcf(k,i)*dp/c_grav
+         !         
+         !         var2d2(i) = var2d2(i) + entr_rate_2d(k,i)*dp
+         !         if(use_pass_cloudvol == 0 ) &
+         !         var2d1(i) = var2d1(i) + entr_rate_2d_initial(k,i)*dp
+         !   enddo
+            !var2d2(i) = var2d2(i)/trash 
             !var2d1(i) = var2d1(i)/trash 
-         enddo
+         !enddo
       endif
 
       do i=its,itf
@@ -3461,7 +3462,7 @@ module module_cu_gf_monan
                Nc = n_cldrop *1.e+6 
                Nc = Nc*xland(i) + 3.*Nc*(1.0-xland(i))
                min_liq  = 4./3.*c_pi*rhowater*r0**3*Nc/rhoair0  ! 0.419e-3 -- .61e-3
-              
+
                if(clw_all(k,i) <= min_liq) then !=> more heating at upper levels, more detrained ice
                   qrc(k,i)= clw_all(k,i)
                   pw(k,i) = 0.
@@ -6817,8 +6818,7 @@ module module_cu_gf_monan
          enddo
       endif
    end subroutine get_edt  
-
-  !---------------------------------------------------------------------------------------------------
+   !---------------------------------------------------------------------------------------------------
    subroutine get_lcl(cumulus,convection_tracer,use_memory,ave_layer,its,ite,itf,kts,kte,ktf,ierr &
                      ,x_add_buoy,zqexec,ztexec,xland,po,t_cup,p_cup,z_cup,q_cup,k22,klcl)
       implicit none
@@ -6879,7 +6879,7 @@ module module_cu_gf_monan
       enddo
 
    end subroutine get_lcl
-  !---------------------------------------------------------------------------------------------------
+   !---------------------------------------------------------------------------------------------------
    subroutine get_cloud_bc(cumulus,ave_layer,kts,kte,ktf,xland,po,array,x_aver,k22,add)
       implicit none
       character *(*)   ,intent (in) :: cumulus
@@ -6934,8 +6934,7 @@ module module_cu_gf_monan
       if(present(add)) x_aver = x_aver + add
 
    end subroutine get_cloud_bc
-   !---------------------------------------------------------------------------------------------------
-   
+   !---------------------------------------------------------------------------------------------------  
    subroutine get_lcl2(cumulus,ave_layer,its,ite,itf,kts,kte,ktf,ierr,zqexec,ztexec,xland &
                      ,po,t_cup,p_cup,z_cup,q_cup,k22,klcl,kpbl,psur,zlcl_sfc)
       implicit none
@@ -7046,7 +7045,6 @@ module module_cu_gf_monan
       enddo
      
    end subroutine LCL_and_PBL_ctrl_on_entrainment
-   
    !---------------------------------------------------------------------------------------------------
    subroutine set_entr_detr_rates(cumulus,its,ite,itf,kts,kte,ktf,ierr,klcl               &
                                  ,min_entr_rate,entr_rate,entr_rate_2d,cd,mentrd_rate,cdd &
@@ -7824,7 +7822,7 @@ module module_cu_gf_monan
                   write(6,*)'**mass cons: k,ktop,zo(ktop),totmas,subin,subdown,detup,entup,detdo,entdo,entupk,detupk'
                   write(6,123)'mass*1.e+6',k,ktop(i),zo(ktop(i),i),totmas*1.e+6,subin*1.e+6,subdown*1.e+6,detup*1.e+6,entup*1.e+6&
                               ,detdo*1.e+6,entdo*1.e+6,entupk*1.e+6,detupk*1.e+6
-123               format(1X,A11,2i5,10e12.5)
+               123 format(1X,A11,2i5,10e12.5)
                endif
             end do   ! k
       end do
@@ -9187,9 +9185,9 @@ module module_cu_gf_monan
             end do
             if (abs((massf - massi)/(1.e-12 + massi)) > 1.e-6) print *, "mass con=>", (massf - massi)/(1.e-12 + massi)
          end do
-!   19    format(1x, I3, 1x, 5e14.3)
-!   18    format(1x, I3, 1x, 4e14.3)
-!   20    format(1x, I3, 1x, 11e16.6)
+         !   19    format(1x, I3, 1x, 5e14.3)
+         !   18    format(1x, I3, 1x, 4e14.3)
+         !   20    format(1x, I3, 1x, 11e16.6)
          !--only for debug
       end if
 
@@ -9851,7 +9849,7 @@ module module_cu_gf_monan
          end do
       end if ! USE_FLUX_FORM == 2 .or. USE_FLUX_FORM == 3
       !
-      end subroutine fluxFormsSourceSink
+   end subroutine fluxFormsSourceSink
 !---------------------------------------------------------------------------------------------!
 !-    end of section for atmospheric composition
 !---------------------------------------------------------------------------------------------!
@@ -10442,7 +10440,7 @@ module module_cu_gf_monan
                   'totlout',totlout(k),'dt/dz',dtovdz(k)
                error=.true.
             end if
-   100      format (a,i3/(4(a10,"=",es9.2)))
+            100      format (a,i3/(4(a10,"=",es9.2)))
          end do
 
          do k=2,ktop
@@ -10521,7 +10519,6 @@ module module_cu_gf_monan
             f(k) = f(k) +q(k)*f(k+1)
          enddo
       end subroutine tridiag
-
      ! ---------------------------------------------------------------------------------------------------
       subroutine setGradsVar(i_in, k_in, nvar, f_in, name1, name2, name3)
          implicit none
@@ -10946,18 +10943,19 @@ module module_cu_gf_monan
            scale_factor(i)    = 1.0 + tanh(sharpness * (vshear(i) - center) / width2)
            precip_rescaled(i) = min(1.5, max(scale_factor(i),1.))
            var2d2(i)          = precip_rescaled(i)
-           scale_factor =  max(0.5, min(0.85/scale_factor,1.))
+           scale_factor       =  max(0.5, min(0.85/scale_factor,1.))
          enddo
+         return
       endif
       if( use_shear_ctrl_entr == 2 ) then
          do i=its,itf
            scale_factor(i) = 1.0 + tanh(sharpness * (vshear(i) - center) / width2)
-          !scale_factor(i) = max(0.20, min(0.50/scale_factor(i),1.)) !ver 1.6.3
            scale_factor(i) = max(0.10, min(0.20/scale_factor(i),1.))
 
-           var2d2(i)             = scale_factor(i)
-           entr_rate(i)          = max(scale_factor(i)*entr_rate(i), min_entr_rate)
+           var2d2(i)       = scale_factor(i)
+           entr_rate(i)    = max(scale_factor(i)*entr_rate(i), min_entr_rate)
          enddo
+         return
       endif
       if( use_shear_ctrl_entr == 20 ) then
          do i=its,itf
@@ -10965,7 +10963,7 @@ module module_cu_gf_monan
             scale_factor(i) = Pmin + (Pmax - Pmin) * (1.0 - exp(-alpha * vshear(i))) &
                                                    * (1.0 - exp(-beta * (H - H0)))
             scale_factor(i)    = scale_factor(i)/Pmin
-            precip_rescaled(i) =  min(1.5, max(scale_factor(i),1.))
+            precip_rescaled(i) = min(1.5, max(scale_factor(i),1.))
             var2d2(i)          = precip_rescaled(i)
            !var2d2(i)          = scale_factor(i)
          enddo       
