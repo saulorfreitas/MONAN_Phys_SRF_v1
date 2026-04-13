@@ -1737,7 +1737,7 @@ module module_cu_gf_monan
         ,vvel1d, x_add_buoy,lambau_dn,lambau_dp,q_wetbulb,t_wetbulb,col_sat_adv            &
         ,Q_adv,alpha_adv,aa1_radpbl,p_cwv_ave,cape, depth_neg_buoy,frh_bcon                &
         ,check_sig,random,rh_entr_factor,rntot,delqev,delq2,qevap,rn,qcond,rainevap,vshear2&
-        ,entr_rescaled,precip_rescaled
+        ,entr_rescaled,precip_rescaled,E_tilde
 
       real, dimension (kts:kte) ::xh_env_eff
 
@@ -1889,7 +1889,7 @@ module module_cu_gf_monan
                                   ,ierr,cap_max,wlpool,x_add_buoy,min_entr_rate,entr_rate)
            end if
            !
-           if( use_shear_ctrl_entr >= 0 .and. trim(cumulus) == 'deep') &
+           if( use_shear_ctrl_entr < 10 .and. trim(cumulus) == 'deep') &
               call get_entr_vshear(cumulus,ierr,us,vs,zo,ktop,kbcon,klcl,po,po_cup,itf,ktf,its,ite, kts,kte     &
                                   ,min_entr_rate,entr_rate, vshear2,var2d2,qo,x_add_buoy,zqexec,precip_rescaled &
                                   ,overshoot,mpas_cape,mpas_cin)
@@ -1903,6 +1903,18 @@ module module_cu_gf_monan
            !
            call get_lcl(cumulus,convection_tracer,use_memory,ave_layer,its,ite,itf,kts,kte,ktf,ierr &
                        ,x_add_buoy,zqexec,ztexec,xland,po,t_cup,p_cup,z_cup,q_cup,k22,klcl)
+           
+
+           !if( use_shear_ctrl_entr == 10 .and. trim(cumulus) == 'deep') &
+               call compute_VSR(itf,ktf,its,ite,kts,kte,ierr,u_cup,v_cup,zo_cup,vshear2)
+               call compute_LCL(itf,its,ite,ierr,t_cup(1,:),p_cup(1,:),q_cup(1,:),zlcl_sfc)
+               call compute_E_tilde(itf,its,ite,ierr,vshear2,zlcl_sfc,E_tilde)
+
+
+           print*,"vshear2", maxval(vshear2),minval(vshear2)
+           print*,"lcl",maxval(zlcl_sfc),minval(zlcl_sfc)
+           print*,"E_tilde",maxval(E_tilde),minval(E_tilde)
+
            !
            !--- start_level
            !
@@ -11233,6 +11245,477 @@ module module_cu_gf_monan
         !print*,"alle", itimestep,max_timesteps,width2,allev_initial,dt
        end function
 !---------------------------------------------------------------------------------------------!
+      subroutine compute_VSR(itf,ktf,its,ite,kts,kte,ierr,u0,v0,z0,V_SR)
+          implicit none
+          
+          integer                , intent (in) :: itf,ktf,its,ite, kts,kte
+          integer, dimension(:)  , intent(in)  :: ierr
+          real,    dimension(:,:), intent(in)  :: z0, u0, v0   ! Perfil de altura e ventos
+          real,    dimension(:)  , intent(out) :: V_SR         ! Valores de saída
+     
+          ! --- Variáveis Locais ---
+          real, parameter:: propfac_coef = 1.0 &    ! Coeficiente do fator de propagação (ex: 1.0)
+                           ,topheight    = 1000.0   ! Altura do topo para V_SR (ex: 1000.0)
+
+          integer :: i,ii
+          real, dimension(its:ite) :: meanx, meany, C_x, C_y 
+          real                     :: sum_weight, sum_u, sum_v, dz
+          real, dimension(its:ite) ::  highx, highy,lowx, lowy
+          real :: sum_u_low, sum_v_low
+          real :: sum_u_high, sum_v_high
+          integer :: count_low, count_high, count_1000, count_top
+          real, dimension(its:ite) :: BK_SHRx, BK_SHRy, BK_mag, BK_dirx, BK_diry, BK_orthx, BK_orthy
+          real, dimension(kts:kte) :: dudz, dvdz
+          real, dimension(its:ite) :: SRH_mean, propfac
+          real :: sum_srh, sign_SRH
+          ! ---------------------------------------------------------
+          ! 1. Vento médio 0-6 km (ponderado pela espessura da camada)
+          ! Equivalente a: np.sum(u0[f6000]*(z0[f6001]-z0[f6000])) ...
+          ! ---------------------------------------------------------
+          do ii = its,itf
+              sum_u = 0.0
+              sum_v = 0.0
+              sum_weight = 0.0
+              
+              do i = kts, ktf
+                  if (z0(i,ii) <= 6000.0) then
+                      dz = z0(i+1,ii) - z0(i,ii)
+                      sum_u = sum_u + u0(i,ii) * dz
+                      sum_v = sum_v + v0(i,ii) * dz
+                      sum_weight = sum_weight + dz
+                  end if
+              end do
+              
+              if (sum_weight > 0.0) then
+                  meanx(ii) = sum_u / sum_weight
+                  meany(ii) = sum_v / sum_weight
+              else
+                  meanx(ii) = 0.0
+                  meany(ii) = 0.0
+              end if
+          enddo 
+
+          ! ---------------------------------------------------------
+          ! 2. Vento médio 0-500 m (média aritmética simples)
+          ! ---------------------------------------------------------
+          do ii = its,itf
+               sum_u_low = 0.0; sum_v_low = 0.0; count_low = 0
+               do i = kts, ktf
+                   if (z0(i,ii) <= 500.0) then
+                       sum_u_low = sum_u_low + u0(i,ii)
+                       sum_v_low = sum_v_low + v0(i,ii)
+                       count_low = count_low + 1
+                   end if
+               end do
+               
+               if (count_low > 0) then
+                   lowx(ii) = sum_u_low / real(count_low)
+                   lowy(ii) = sum_v_low / real(count_low)
+               else
+                   lowx(ii) = 0.0; lowy(ii) = 0.0
+               end if
+          enddo
+          ! ---------------------------------------------------------
+          ! 3. Vento médio 5500-6000 m (com fallback para 0-6000m)
+          ! ---------------------------------------------------------
+          do ii = its,itf
+               sum_u_high = 0.0; sum_v_high = 0.0; count_high = 0
+               do i = kts,ktf
+                   if (z0(i,ii) >= 5500.0 .and. z0(i,ii) <= 6000.0) then
+                       sum_u_high = sum_u_high + u0(i,ii)
+                       sum_v_high = sum_v_high + v0(i,ii)
+                       count_high = count_high + 1
+                   end if
+               end do
+               
+               if (count_high > 0) then
+                   highx(ii) = sum_u_high / real(count_high)
+                   highy(ii) = sum_v_high / real(count_high)
+               else
+                   ! Fallback: se len(f560)==0, usa a média 0-6000m (f6000)
+                   ! Aqui usamos meanx/meany ponderados calculados no passo 1.
+                   highx(ii) = meanx(ii)
+                   highy(ii) = meany(ii)
+               end if
+          enddo
+          ! ---------------------------------------------------------
+          ! 4. Vetores de Cisalhamento e Ortogonais de Bunkers
+          ! ---------------------------------------------------------
+          do ii = its,itf
+              BK_SHRx(ii) = highx(ii) - lowx(ii)
+              BK_SHRy(ii) = highy(ii) - lowy(ii)
+              BK_mag(ii) = sqrt(BK_SHRx(ii)**2 + BK_SHRy(ii)**2)
+              
+              if (BK_mag(ii) > 0.0) then
+                  BK_dirx(ii)  = BK_SHRx(ii) / BK_mag(ii)
+                  BK_diry(ii)  = BK_SHRy(ii) / BK_mag(ii)
+                  BK_orthx(ii) = BK_diry(ii) * 7.5
+                  BK_orthy(ii) = -BK_dirx(ii) * 7.5
+              else
+                  BK_orthx(ii) = 0.0
+                  BK_orthy(ii) = 0.0
+              end if
+              
+          enddo
+          ! ---------------------------------------------------------
+          ! 5. Cisalhamento Vertical e Cálculo da SRH (0-1000m)
+          ! ---------------------------------------------------------
+          do ii = its,itf
+              dudz(:) = 0.0
+              dvdz(:) = 0.0
+              
+              ! Diferença central para interior
+              do i = kts+1,ktf-1
+                  dudz(i) = (u0(i+1,ii) - u0(i-1,ii)) / (z0(i+1,ii) - z0(i-1,ii))
+                  dvdz(i) = (v0(i+1,ii) - v0(i-1,ii)) / (z0(i+1,ii) - z0(i-1,ii))
+              end do
+              
+              ! Extrapolação na base (dudz[0]=2*dudz[1]-dudz[2])
+              dudz(1) = 2.0 * dudz(2) - dudz(3)
+              dvdz(1) = 2.0 * dvdz(2) - dvdz(3)
+              
+              ! Cálculo da integral média aproximada (0-1000m)
+              sum_srh = 0.0; count_1000 = 0
+              do i = kts,ktf
+                  if (z0(i,ii) <= 1000.0) then
+                      ! u0(i)-meanx é o equivalente a SR_mean_u no ponto i
+                      sum_srh = sum_srh + ( -(u0(i,ii) - meanx(ii))*dvdz(i) + (v0(i,ii) - meany(ii))*dudz(i) )
+                      count_1000 = count_1000 + 1
+                  end if
+              end do
+              
+              if (count_1000 > 0) then
+                  SRH_mean(ii) = abs( (sum_srh / real(count_1000)) * 1000.0 )
+              else
+                  SRH_mean(ii) = 0.0
+              end if
+
+          enddo 
+          ! ---------------------------------------------------------
+          ! 6. Fator de Propagação (propfac)
+          ! ---------------------------------------------------------
+          do ii = its,itf
+             if (SRH_mean(ii) > 0.0) then
+                 sign_SRH = SRH_mean(ii) / abs(SRH_mean(ii))
+                 propfac(ii) = sign_SRH * propfac_coef * min(abs(SRH_mean(ii)) / 150.0, 1.0)
+                 
+                 if (propfac_coef == 2.0) propfac(ii) = 1.0
+                 if (propfac_coef == 0.0) propfac(ii) = 0.0
+             else
+                 propfac(ii) = 0.0
+             end if
+             
+          enddo
+
+          ! ---------------------------------------------------------
+          ! 7. Movimento Final da Tempestade e V_SR médio
+          ! ---------------------------------------------------------
+          do ii = its,itf
+             C_x(ii) = meanx(ii) + propfac(ii) * BK_orthx(ii)
+             C_y(ii) = meany(ii) + propfac(ii) * BK_orthy(ii)
+             
+             sum_u = 0.0; count_top = 0
+             do i = kts,ktf
+                 if (z0(i,ii) <= topheight) then
+                     sum_u = sum_u + sqrt((u0(i,ii) - C_x(ii))**2 + (v0(i,ii) - C_y(ii))**2)
+                     count_top = count_top + 1
+                 end if
+             end do
+             
+             if (count_top > 0) then
+                 V_SR(ii) = sum_u / real(count_top)
+             else
+                 V_SR(ii) = 0.0
+             end if
+          enddo
+      end subroutine compute_VSR
+!---------------------------------------------------------------------------------------------!      
+      subroutine compute_LCL(itf,its,ite,ierr,T,p,qv,Z_LCL)
+          implicit none
+          real, parameter :: cp = 1004.0       ! Specific heat of dry air
+          real, parameter :: cpv = 1870.0      ! Specific heat of water vapor
+          real, parameter :: Rd = 287.05       ! Gas constant for dry air
+          real, parameter :: Rv = 461.51       ! Gas constant for water vapor
+          real, parameter :: cpl = 4186.0      ! Specific heat of liquid water
+          
+          ! --- Arguments ---
+          integer                , intent(in)  :: itf,its,ite
+          integer, dimension(:)  , intent(in)  :: ierr
+          real,    dimension(:)  , intent(in)  :: T, qv, p
+          real,    dimension(:)  , intent(out) :: Z_LCL       
+          
+          !real, intent(in) :: T    ! Temperature (K)
+          !real, intent(in) :: qv   ! Specific humidity (kg/kg)
+          !real, intent(in) :: p    ! Pressure (Pa or hPa, depending on compute_rsat)
+          
+          ! --- Local Variables ---
+          integer :: i
+          real :: cpm, Rm, a, b, c
+          real :: r_sat, q_sat, RH
+          real :: arg1, arg2, arg3
+          real, dimension(its:ite) :: T_LCL, P_LCL
+          
+          ! --- External Functions Declarations ---
+          !real, external :: compute_rsat
+          !real, external :: lambertw
+          do i=its,itf
+              
+              ! ---------------------------------------------------------
+              ! 1. Mixture properties
+              ! ---------------------------------------------------------
+              cpm = (1.0 - qv(i)) * cp + qv(i) * cpv
+              Rm  = (1.0 - qv(i)) * Rd + qv(i) * Rv
+              
+              ! 2. Thermodynamic constants for the exact LCL equation
+              a = cpm / Rm + (cpl - cpv) / Rv
+              b = -(c_alvl - (cpv - cpl) * c_t00) / (Rv * T(i))
+              c = b / a
+              
+              ! 3. Saturation and Relative Humidity
+              r_sat = compute_rsat(T(i), 100.*p(i), 0, 273.15, 253.15)
+              q_sat = r_sat / (1.0 + r_sat)
+              RH = qv(i) / q_sat
+
+              ! 4. Lambert W Arguments
+              arg1 = RH**(1.0 / a)
+              arg2 = c * exp(1.0 * c)   ! exp(x) in Fortran computes e^x, exp(1.0) is just 'e'
+              
+              ! 5. Calculate Lambert W function (branch -1)
+              arg3 = real(lambertw(real(arg1 * arg2,8), -1),4)
+              
+              ! 6. Final LCL temperature, pressure and height Calculation
+              T_LCL(i) = c * T(i) / arg3 
+              P_LCL(i) = p(i) * (T_LCL(i) / T(i))**(cpm / Rm)
+              Z_LCL(i) = (cpm / c_grav) * (T(i) - T_LCL(i))
+              Z_LCL(i) = max(0.0,Z_LCL(i))
+          enddo
+
+      end subroutine compute_LCL
+!---------------------------------------------------------------------------------------------!
+
+      function lambertw(x, k) result(w)
+          implicit none
+          
+          ! --- Arguments ---
+          real(8), intent(in) :: x    ! The input value
+          integer, intent(in) :: k    ! The branch (0 or -1)
+          
+          ! --- Return Value ---
+          real(8) :: w
+          
+          ! --- Local Variables ---
+          real(8) :: ew, step, f, L1, L2
+          integer :: i
+          real(8), parameter :: tol = 1.0d-10
+          real(8), parameter :: E_INV = 0.3678794411714423215955d0 ! 1/e
+          
+          ! Trap for the exact branch point (prevents division by zero)
+          if (abs(x + E_INV) < 1.0d-10) then
+              w = -1.0d0
+              return
+          end if
+          
+          ! ---------------------------------------------------------
+          ! 1. Branch Selection and Initial Guesses
+          ! ---------------------------------------------------------
+          if (k == -1) then
+              ! Branch -1: Valid only for -1/e <= x < 0
+              if (x >= 0.0d0 .or. x < -E_INV) then
+                  w = -999.0d0  ! Out of bounds error flag
+                  return
+              end if
+              
+              ! Initial guess for branch -1
+              if (x < -0.3d0) then
+                  w = -1.0d0
+              else
+                  L1 = log(-x)
+                  L2 = log(-L1)
+                  w = L1 - L2 + L2 / L1
+              end if
+              
+          else 
+              ! Branch 0 (Principal): Valid for x >= -1/e
+              if (x < -E_INV) then
+                  w = -999.0d0  ! Out of bounds error flag
+                  return
+              end if
+              
+              ! Initial guess for branch 0
+              if (x < 1.0d0) then
+                  w = x
+              else
+                  w = log(x) - log(log(x))
+              end if
+          end if
+          
+          ! ---------------------------------------------------------
+          ! 2. Halley's Method Iteration
+          ! ---------------------------------------------------------
+          do i = 1, 100
+              ew = exp(w)
+              f = w * ew - x
+              
+              ! Halley's step: f / (f' - (f * f'') / (2 * f'))
+              step = f / (ew * (w + 1.0d0) - ((w + 2.0d0) * f) / (2.0d0 * w + 2.0d0))
+              
+              w = w - step
+              
+              ! Check for convergence
+              if (abs(step) < tol) exit
+          end do
+          
+      end function lambertw
+!---------------------------------------------------------------------------------------------!
+      function compute_rsat(T, p, iceflag, T1, T2) result(qsat)
+          implicit none
+          real, parameter :: cp = 1004.0       ! Specific heat of dry air
+          real, parameter :: cpv = 1870.0      ! Specific heat of water vapor
+          real, parameter :: Rd = 287.05       ! Gas constant for dry air
+          real, parameter :: Rv = 461.51       ! Gas constant for water vapor
+          real, parameter :: cpl = 4186.0      ! Specific heat of liquid water
+          real, parameter :: xlv = 2.501e6     ! Latent heat of vaporization
+          real, parameter :: ttrip = 273.16    ! Triple point of water (K)
+          real, parameter :: cpi = 2106.0      ! Specific heat of ice (J/kg/K)
+          real, parameter :: xls = 2.834e6     ! Latent heat of sublimation (J/kg)
+          real, parameter :: eref = 611.65     ! Reference vapor pressure at ttrip (Pa)
+          real, parameter :: epsilon = 0.622   ! Ratio of gas constants (Rd/Rv)
+                   
+          ! --- Arguments ---
+          integer, intent(in) :: iceflag  ! 0 = liquid, 1 = combo, 2 = ice
+          real, intent(in) :: T           ! Temperature (K)
+          real, intent(in) :: p         ! Pressure (Pa)
+          real, intent(in) :: T1        ! Warmest mixed-phase temperature (K)
+          real, intent(in) :: T2        ! Coldest mixed-phase temperature (K)
+          
+          ! --- Return Value ---
+          real :: qsat
+
+          ! --- Local Variables ---
+          real :: omeg, term1, term2
+          real :: esl, esl_l, esl_i
+          real :: qsat_l, qsat_i
+          
+          ! 1. Calculate phase weight fraction
+          omeg = omega(T, T1, T2)
+          
+          ! 2. Calculate Saturation Mixing Ratio based on iceflag
+          if (iceflag == 0) then
+              ! Liquid only
+              term1 = (cpv - cpl) / Rv
+              term2 = (c_alvl - ttrip * (cpv - cpl)) / Rv
+              esl = exp((T - ttrip) * term2 / (T * ttrip)) * eref * (T / ttrip)**term1
+              qsat = epsilon * esl / (p - esl)
+              
+          else if (iceflag == 1) then
+              ! Linear combination of liquid and ice
+              term1 = (cpv - cpl) / Rv
+              term2 = (c_alvl - ttrip * (cpv - cpl)) / Rv
+              esl_l = exp((T - ttrip) * term2 / (T * ttrip)) * eref * (T / ttrip)**term1
+              qsat_l = epsilon * esl_l / (p - esl_l)
+              
+              term1 = (cpv - cpi) / Rv
+              term2 = (xls - ttrip * (cpv - cpi)) / Rv
+              esl_i = exp((T - ttrip) * term2 / (T * ttrip)) * eref * (T / ttrip)**term1
+              qsat_i = epsilon * esl_i / (p - esl_i)
+              
+              qsat = (1.0 - omeg) * qsat_l + omeg * qsat_i
+              
+          else if (iceflag == 2) then
+              ! Ice only
+              term1 = (cpv - cpi) / Rv
+              term2 = (xls - ttrip * (cpv - cpi)) / Rv
+              esl = exp((T - ttrip) * term2 / (T * ttrip)) * eref * (T / ttrip)**term1
+              qsat = epsilon * esl / (p - esl)
+              
+          else
+              ! Fallback in case of an invalid iceflag
+              qsat = 0.0
+          end if
+          
+      end function compute_rsat
+
+!---------------------------------------------------------------------------------------------!
+      function omega(T, T1, T2) result(fraction)
+          implicit none
+          
+          ! --- Arguments ---
+          real, intent(in) :: T   ! Current Temperature
+          real, intent(in) :: T1  ! Warmest mixed-phase temperature (e.g., 273.15)
+          real, intent(in) :: T2  ! Coldest mixed-phase temperature (e.g., 253.15)
+          
+          ! --- Return Value ---
+          real :: fraction
+          
+          ! 1. If T > T1 (warmer than T1), omega = 0
+          ! 2. If T < T2 (colder than T2), omega = 1
+          ! 3. If T is between T1 and T2, omega is a linear ramp from 0 to 1
+          
+          ! Calculate the linear interpolation fraction
+          fraction = (T - T1) / (T2 - T1)
+          fraction = max(0.0, fraction)
+          fraction = min(1.0, fraction)
+
+      end function omega
+!---------------------------------------------------------------------------------------------!
+      subroutine compute_E_tilde(itf,its,ite,ierr,vsr,lcl,E_tilde)
+          implicit none
+          integer,intent(in) :: itf,its,ite
+          integer, dimension(:), intent(in)  :: ierr
+          real, dimension(:), intent(in)     :: lcl,vsr
+          real, dimension(:), intent(out)    :: E_tilde 
+          integer :: i
+
+          do i=its,itf
+            E_tilde(i) = real(e_from_vsr_lcl(vsr(i),lcl(i)),4)
+          enddo
+      end subroutine compute_E_tilde
+ !---------------------------------------------------------------------------------------------!
+      pure real(8) function e_from_vsr_lcl(vsri, lcli) result(e_value)
+          real(4), intent(in) :: vsri
+          real(4), intent(in) :: lcli
+          !real(8) :: e_value
+          real(8) :: lcl_scaled
+          real(8) :: a0, vsr,lcl
+          real(8) :: a1
+          real(8) :: a2
+          real(8) :: a3
+          real(8) :: a4
+          real(8) :: raw_e
+          lcl = real(lcli,kind=8)
+          vsr = real(vsri,kind=8)
+          lcl_scaled = lcl / 1000.0
+
+          ! A0(VSR) = c00 + c10*V + c20*V^2 + c30*V^3 + c40*V^4
+          a0 = (((( 5.541281219161046e-05 * vsr - 0.0018659452389359987) * vsr + &
+                    0.014775192854562039) * vsr + 0.02924863535610385) * vsr + &
+                    0.22595916787522805)
+
+          ! A1(VSR)
+          a1 = (((( -0.0007404976571125531 * vsr + 0.02353813735664418) * vsr - &
+                      0.20142929682504374) * vsr + 0.3206721242899938) * vsr - &
+                      0.793295516904208)
+
+          ! A2(VSR)
+          a2 = (((( 0.0024582680342798468 * vsr - 0.08185336453270162) * vsr + &
+                      0.8058744982725966) * vsr - 2.291970169673513) * vsr + &
+                      3.1413341938323938)
+
+          ! A3(VSR)
+          a3 = (((( -0.0022633123721178348 * vsr + 0.07677626225134956) * vsr - &
+                    0.7914978082434735) * vsr + 2.5271423842846072) * vsr - &
+                    2.766814507077258)
+
+          ! A4(VSR)
+          a4 = (((( 0.0006116326430014637 * vsr - 0.02097074673513007) * vsr + &
+                    0.22143661168400353) * vsr - 0.7448805067889095) * vsr + &
+                    0.7352760976228332)
+
+          raw_e = ((((a4 * lcl_scaled + a3) * lcl_scaled + a2) * lcl_scaled + a1) * lcl_scaled + a0)
+          e_value = min(1.0, max(0.0, raw_e))
+      end function e_from_vsr_lcl
+!---------------------------------------------------------------------------------------------!
+
 !- list of ierr reasons:
 ! ierr(i)=21   ==>  ierrc(i)='for shallow convection:  LCL height < PBL height'
 ! ierr(i)=22   ==>  ierrc(i)="ke_gustfront less than -cin1"

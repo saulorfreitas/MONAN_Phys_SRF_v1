@@ -92,7 +92,7 @@ module modConstants
    !# Minimum TKE [J/kg]
    real(kind=r4), parameter :: c_grav      = 9.80665
    !# Gravity acceleration [m/s]
-   real(kind=r4), parameter :: c_alvl     = 2.50e6
+   real(kind=r4), parameter :: c_alvl     = 2.501e6
    real(kind=r4), parameter :: c_alvi     = 2.834e6
    real(kind=r4), parameter :: c_alli     = 0.334e6
    real(kind=r4), parameter :: c_alvl2    = 6.25e12
@@ -168,6 +168,8 @@ module modConstants
    real(kind=r4), parameter :: c_rvtmp2 = c_rcpv/c_cp_pd - 1.0
    real(kind=r4), parameter :: c_rtber = c_t00 - 5. 
    real(kind=r4), parameter :: c_rtbercu = c_t00 - 5.0 
+   real(kind=r4), parameter :: epsilon = 0.622   ! Ratio of gas constants (Rd/Rv)
+   real(kind=r4), parameter :: ttrip = 273.16    ! Triple point of water (K)
 
    real(kind=r4), parameter :: p_zqmax = 0.5
 
