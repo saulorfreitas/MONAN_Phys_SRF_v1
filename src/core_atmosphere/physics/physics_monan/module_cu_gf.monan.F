@@ -2460,8 +2460,8 @@ module module_cu_gf_monan
       if( trim(cumulus) == 'deep') then
         !var2d1(:) = aa1(:)
         !var2d2(:) = aa1_bl(:)
-         var2d1(:) = vshear2(:)
-        !var2d1(:) = zlcl_sfc(:)
+        ! var2d1(:) = vshear2(:)
+         var2d1(:) = zlcl_sfc(:)
          var2d2(:) = E_tilde(:)
         !var2d2(:) = x_add_buoy(:)
          !if( adv_trigger == 0 .and. convection_tracer == 1) then 
@@ -11673,12 +11673,12 @@ module module_cu_gf_monan
           integer :: i
 
           do i=its,itf
-            !if(vsr(i) < 1.1 .or. lcl(i) <  100.) then 
+            if(vsr(i) < 1.1 .or. lcl(i) <  100.) then 
             !    E_tilde(i) = 0.05
-            !else
-               ! E_tilde(i) = real(e_from_vsr_lcl(vsr(i),lcl(i)),4)
-                E_tilde(i) = -1.45 + 0.38*log(vsr(i)+0.5) + 0.22*log(lcl(i)+100.)
-            !endif
+            else
+                E_tilde(i) = real(e_from_vsr_lcl(vsr(i),lcl(i)),4)
+                !E_tilde(i) = -1.45 + 0.38*log(vsr(i)+0.5) + 0.22*log(lcl(i)+100.)
+            endif
             E_tilde(i) = min(max(0.0,E_tilde(i)),1.0)
           enddo
       end subroutine compute_E_tilde
