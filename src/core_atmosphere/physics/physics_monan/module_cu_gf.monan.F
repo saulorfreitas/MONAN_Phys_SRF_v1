@@ -1905,11 +1905,14 @@ module module_cu_gf_monan
                        ,x_add_buoy,zqexec,ztexec,xland,po,t_cup,p_cup,z_cup,q_cup,k22,klcl,zlcl_sfc)
            
 
-           !if( use_shear_ctrl_entr == 10 .and. trim(cumulus) == 'deep') &
-           if( trim(cumulus) == 'deep') then
+           if( use_shear_ctrl_entr == -1 .and. trim(cumulus) == 'deep') then 
                call compute_LCL(itf,its,ite,ierr,t_cup(1,:),p_cup(1,:),q_cup(1,:),zlcl_sfc)
                call compute_VSR(itf,ktf,its,ite,kts,kte,ierr,u_cup,v_cup,zo_cup,zlcl_sfc,vshear2)
                call compute_E_tilde(itf,its,ite,ierr,vshear2,zlcl_sfc,E_tilde)
+               do i=its,itf
+                !scale_factor(i) = max(0.05, 1.0 - E_tilde(i))
+                 entr_rate(i)    = max( max(0.05, 1.0 - E_tilde(i)) *  entr_rate(i), min_entr_rate)
+               enddo
                !print*,"VS_R-ZLCL-E_TIL", maxval(vshear2),minval(vshear2),maxval(zlcl_sfc),minval(zlcl_sfc),maxval(E_tilde),minval(E_tilde)
             endif
            !
@@ -2457,8 +2460,8 @@ module module_cu_gf_monan
       if( trim(cumulus) == 'deep') then
         !var2d1(:) = aa1(:)
         !var2d2(:) = aa1_bl(:)
-        ! var2d1(:) = vshear2(:)
-         var2d1(:) = zlcl_sfc(:)
+         var2d1(:) = vshear2(:)
+        !var2d1(:) = zlcl_sfc(:)
          var2d2(:) = E_tilde(:)
         !var2d2(:) = x_add_buoy(:)
          !if( adv_trigger == 0 .and. convection_tracer == 1) then 
@@ -6874,7 +6877,7 @@ module module_cu_gf_monan
 
          call calc_lcl(tlll,100.*plll,rlll,tlcl,plcl,dzlcl)
          
-         zlcl_sfc(i)=max(dzlcl,100.)
+         zlcl_sfc(i)=max(dzlcl,0.)
          
          !-get LCL
          if(dzlcl >= 0.) then ! LCL found (if dzlcl<0 => not found)
@@ -11491,7 +11494,7 @@ module module_cu_gf_monan
               T_LCL(i) = c * T(i) / arg3 
               P_LCL(i) = p(i) * (T_LCL(i) / T(i))**(cpm / Rm)
               Z_LCL(i) = (cpm / c_grav) * (T(i) - T_LCL(i))
-              Z_LCL(i) = max(100.0,Z_LCL(i))
+              Z_LCL(i) = max(0.0,Z_LCL(i))
           enddo
 
       end subroutine compute_LCL
@@ -11670,14 +11673,16 @@ module module_cu_gf_monan
           integer :: i
 
           do i=its,itf
-            if(vsr(i) < 3.0 .or. lcl(i) > 3000.) then 
-                E_tilde(i) = 0.05
-            else
-                E_tilde(i) = real(e_from_vsr_lcl(vsr(i),lcl(i)),4)
-            endif
+            !if(vsr(i) < 1.1 .or. lcl(i) <  100.) then 
+            !    E_tilde(i) = 0.05
+            !else
+               ! E_tilde(i) = real(e_from_vsr_lcl(vsr(i),lcl(i)),4)
+                E_tilde(i) = -1.45 + 0.38*log(vsr(i)+0.5) + 0.22*log(lcl(i)+100.)
+            !endif
+            E_tilde(i) = min(max(0.0,E_tilde(i)),1.0)
           enddo
       end subroutine compute_E_tilde
- !---------------------------------------------------------------------------------------------!
+!---------------------------------------------------------------------------------------------!
       pure real(8) function e_from_vsr_lcl(vsri, lcli) result(e_value)
           real(4), intent(in) :: vsri
           real(4), intent(in) :: lcli
