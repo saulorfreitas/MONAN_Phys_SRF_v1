@@ -1889,7 +1889,7 @@ module module_cu_gf_monan
                                   ,ierr,cap_max,wlpool,x_add_buoy,min_entr_rate,entr_rate)
            end if
            !
-           if( use_shear_ctrl_entr < 10 .and. trim(cumulus) == 'deep') &
+           if( use_shear_ctrl_entr > 0 .and. trim(cumulus) == 'deep') &
               call get_entr_vshear(cumulus,ierr,us,vs,zo,ktop,kbcon,klcl,po,po_cup,itf,ktf,its,ite, kts,kte     &
                                   ,min_entr_rate,entr_rate, vshear2,var2d2,qo,x_add_buoy,zqexec,precip_rescaled &
                                   ,overshoot,mpas_cape,mpas_cin)
@@ -1902,19 +1902,16 @@ module module_cu_gf_monan
            !--- determine LCL for the air parcels around K22
            !
            call get_lcl(cumulus,convection_tracer,use_memory,ave_layer,its,ite,itf,kts,kte,ktf,ierr &
-                       ,x_add_buoy,zqexec,ztexec,xland,po,t_cup,p_cup,z_cup,q_cup,k22,klcl)
+                       ,x_add_buoy,zqexec,ztexec,xland,po,t_cup,p_cup,z_cup,q_cup,k22,klcl,zlcl_sfc)
            
 
            !if( use_shear_ctrl_entr == 10 .and. trim(cumulus) == 'deep') &
-               call compute_VSR(itf,ktf,its,ite,kts,kte,ierr,u_cup,v_cup,zo_cup,vshear2)
+           if( trim(cumulus) == 'deep') then
                call compute_LCL(itf,its,ite,ierr,t_cup(1,:),p_cup(1,:),q_cup(1,:),zlcl_sfc)
+               call compute_VSR(itf,ktf,its,ite,kts,kte,ierr,u_cup,v_cup,zo_cup,zlcl_sfc,vshear2)
                call compute_E_tilde(itf,its,ite,ierr,vshear2,zlcl_sfc,E_tilde)
-
-
-           print*,"vshear2", maxval(vshear2),minval(vshear2)
-           print*,"lcl",maxval(zlcl_sfc),minval(zlcl_sfc)
-           print*,"E_tilde",maxval(E_tilde),minval(E_tilde)
-
+               !print*,"VS_R-ZLCL-E_TIL", maxval(vshear2),minval(vshear2),maxval(zlcl_sfc),minval(zlcl_sfc),maxval(E_tilde),minval(E_tilde)
+            endif
            !
            !--- start_level
            !
@@ -2460,7 +2457,9 @@ module module_cu_gf_monan
       if( trim(cumulus) == 'deep') then
         !var2d1(:) = aa1(:)
         !var2d2(:) = aa1_bl(:)
-         var2d1(:) = vshear2(:)
+        ! var2d1(:) = vshear2(:)
+         var2d1(:) = zlcl_sfc(:)
+         var2d2(:) = E_tilde(:)
         !var2d2(:) = x_add_buoy(:)
          !if( adv_trigger == 0 .and. convection_tracer == 1) then 
          !   do i=its,itf
@@ -6832,7 +6831,7 @@ module module_cu_gf_monan
    end subroutine get_edt  
    !---------------------------------------------------------------------------------------------------
    subroutine get_lcl(cumulus,convection_tracer,use_memory,ave_layer,its,ite,itf,kts,kte,ktf,ierr &
-                     ,x_add_buoy,zqexec,ztexec,xland,po,t_cup,p_cup,z_cup,q_cup,k22,klcl)
+                     ,x_add_buoy,zqexec,ztexec,xland,po,t_cup,p_cup,z_cup,q_cup,k22,klcl,zlcl_sfc)
       implicit none
       character*(*), intent (in)             :: cumulus
       integer  ,intent (in )                 :: itf,ktf, its,ite, kts,kte
@@ -6843,6 +6842,7 @@ module module_cu_gf_monan
       real     ,intent (in ), dimension(:,:) :: t_cup,p_cup,z_cup,po,q_cup
 
       integer  ,intent (out), dimension(:)   :: klcl
+      real     ,intent (out), dimension(:)   :: zlcl_sfc
 
       real :: tlll,plll,rlll,tlcl,plcl,dzlcl,zlll,x_add
       integer :: i,k,vtp_index
@@ -6873,7 +6873,9 @@ module module_cu_gf_monan
          call get_cloud_bc(cumulus,ave_layer,kts,kte,ktf,xland(i),po(kts:kte,i),p_cup (kts:kte,i),plll,k22(i))
 
          call calc_lcl(tlll,100.*plll,rlll,tlcl,plcl,dzlcl)
-
+         
+         zlcl_sfc(i)=max(dzlcl,100.)
+         
          !-get LCL
          if(dzlcl >= 0.) then ! LCL found (if dzlcl<0 => not found)
                call get_cloud_bc(cumulus,ave_layer,kts,kte,ktf,xland(i),po(kts:kte,i),z_cup (kts:kte,i),zlll,k22(i))
@@ -11245,14 +11247,15 @@ module module_cu_gf_monan
         !print*,"alle", itimestep,max_timesteps,width2,allev_initial,dt
        end function
 !---------------------------------------------------------------------------------------------!
-      subroutine compute_VSR(itf,ktf,its,ite,kts,kte,ierr,u0,v0,z0,V_SR)
+      subroutine compute_VSR(itf,ktf,its,ite,kts,kte,ierr,u0,v0,z0,zlcl_sfc,V_SR)
           implicit none
           
           integer                , intent (in) :: itf,ktf,its,ite, kts,kte
           integer, dimension(:)  , intent(in)  :: ierr
           real,    dimension(:,:), intent(in)  :: z0, u0, v0   ! Perfil de altura e ventos
+          real,    dimension(:)  , intent(in)  :: zlcl_sfc      
           real,    dimension(:)  , intent(out) :: V_SR         ! Valores de saída
-     
+    
           ! --- Variáveis Locais ---
           real, parameter:: propfac_coef = 1.0 &    ! Coeficiente do fator de propagação (ex: 1.0)
                            ,topheight    = 1000.0   ! Altura do topo para V_SR (ex: 1000.0)
@@ -11262,7 +11265,7 @@ module module_cu_gf_monan
           real                     :: sum_weight, sum_u, sum_v, dz
           real, dimension(its:ite) ::  highx, highy,lowx, lowy
           real :: sum_u_low, sum_v_low
-          real :: sum_u_high, sum_v_high
+          real :: sum_u_high, sum_v_high,htop
           integer :: count_low, count_high, count_1000, count_top
           real, dimension(its:ite) :: BK_SHRx, BK_SHRy, BK_mag, BK_dirx, BK_diry, BK_orthx, BK_orthy
           real, dimension(kts:kte) :: dudz, dvdz
@@ -11413,10 +11416,11 @@ module module_cu_gf_monan
           do ii = its,itf
              C_x(ii) = meanx(ii) + propfac(ii) * BK_orthx(ii)
              C_y(ii) = meany(ii) + propfac(ii) * BK_orthy(ii)
-             
+             htop = topheight
+            !htop = zlcl_sfc(ii)
              sum_u = 0.0; count_top = 0
              do i = kts,ktf
-                 if (z0(i,ii) <= topheight) then
+                 if (z0(i,ii) <= htop) then
                      sum_u = sum_u + sqrt((u0(i,ii) - C_x(ii))**2 + (v0(i,ii) - C_y(ii))**2)
                      count_top = count_top + 1
                  end if
@@ -11487,12 +11491,11 @@ module module_cu_gf_monan
               T_LCL(i) = c * T(i) / arg3 
               P_LCL(i) = p(i) * (T_LCL(i) / T(i))**(cpm / Rm)
               Z_LCL(i) = (cpm / c_grav) * (T(i) - T_LCL(i))
-              Z_LCL(i) = max(0.0,Z_LCL(i))
+              Z_LCL(i) = max(100.0,Z_LCL(i))
           enddo
 
       end subroutine compute_LCL
 !---------------------------------------------------------------------------------------------!
-
       function lambertw(x, k) result(w)
           implicit none
           
@@ -11667,7 +11670,11 @@ module module_cu_gf_monan
           integer :: i
 
           do i=its,itf
-            E_tilde(i) = real(e_from_vsr_lcl(vsr(i),lcl(i)),4)
+            if(vsr(i) < 3.0 .or. lcl(i) > 3000.) then 
+                E_tilde(i) = 0.05
+            else
+                E_tilde(i) = real(e_from_vsr_lcl(vsr(i),lcl(i)),4)
+            endif
           enddo
       end subroutine compute_E_tilde
  !---------------------------------------------------------------------------------------------!
@@ -11715,7 +11722,6 @@ module module_cu_gf_monan
           e_value = min(1.0, max(0.0, raw_e))
       end function e_from_vsr_lcl
 !---------------------------------------------------------------------------------------------!
-
 !- list of ierr reasons:
 ! ierr(i)=21   ==>  ierrc(i)='for shallow convection:  LCL height < PBL height'
 ! ierr(i)=22   ==>  ierrc(i)="ke_gustfront less than -cin1"
