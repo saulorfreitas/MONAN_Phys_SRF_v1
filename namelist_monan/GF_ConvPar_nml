@@ -20,7 +20,7 @@
   use_scale_dep     = 1,                  != 0/1: turn ON/OFF the scale dependence approach
   sig_factor        = 0.22,               != exponential factor for the sigma determination (orig = 0.1)
   
-  use_cold_start    = 1
+  use_cold_start    = 0
   use_pass_cloudvol = 0,
   use_lcl_ctrl_entr = 0,
   use_rhu_ctrl_entr = 0,
@@ -32,12 +32,10 @@
   use_memory        = 0,
 
   tau_ocea_cp       = 3600.,       != cold pool lifetime over the ocean
-  tau_land_cp       = 3600.,       != cold pool lifetime over land
+  tau_land_cp       = 7200.,       != cold pool lifetime over land
   mx_buoy1          = 250.5,       ! J/kg
   mx_buoy2          = 20004.0,     ! J/kg
-  tu_buoyx          = 1.0,
-
-
+  
   sgs_w_timescale   = 1,           != 0/1: uses vertical velocity for determination of tau_ecmwf
   tau_deep          = 3600.,       != timescales for instability removal, only for sgs_w_timescale = 0
   tau_mid           = 3600., 

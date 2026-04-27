@@ -104,7 +104,7 @@ module module_cu_gf_monan
       ,n_cldrop,use_random_num,modConvParGF_initialized,use_pass_cloudvol&
       ,use_lcl_ctrl_entr,use_rhu_ctrl_entr,cum_min_cloud_depth,use_sub3d &
       ,cum_fr_min_entr,use_shear_ctrl_entr,use_cwv_ctrl_entr,adv_trigger &
-      ,dcape_threshold,use_cold_start,tu_buoyx
+      ,dcape_threshold,use_cold_start
 
    public makeDropletNumber,makeIceNumber,FractLiqF                      &
       ,coldPoolStart,readGFConvParNML,initModConvParGF,cu_gf_monan_driver&
@@ -254,7 +254,6 @@ module module_cu_gf_monan
    real    :: tau_land_cp    != cold pool lifetime over land
    real    :: mx_buoy1       !=   250.5 J/kg
    real    :: mx_buoy2       != 20004.0 J/kg: temp exc=10 K, q deficit=4 g/kg (=> mx_buoy ~ 20 kJ/kg)
-   real    :: tu_buoyx
    real    :: use_cloud_dissipation != to acccount for the cloud dissipation at the decayment phase
    real    :: use_random_num        != stochastic pertubation for the height of maximum Zu
    real    :: beta_sh               != only for shallow plume
@@ -304,8 +303,8 @@ module module_cu_gf_monan
 
    !--- new entrainment formulation which uses the lateral entrainment rate as a trigger function
    real, parameter ::  delta_ref= 30.e+3  & ! meters
-                      ,entr_ref = 1.2e-3     ! ref entrainment for dx = 30000 m
-   !                  ,entr_ref = 0.8e-3     ! ref entrainment for dx = 30000 m
+   !                   ,entr_ref = 1.2e-3     ! ref entrainment for dx = 30000 m
+                       ,entr_ref = 0.8e-3     ! ref entrainment for dx = 30000 m
 
    real, parameter, dimension(2) :: entr_red  = (/1.,0.333/)
    !
@@ -732,7 +731,7 @@ module module_cu_gf_monan
                !- cloud fraction 
                cnvcf2d (k,i)  = cnvcf(i,k,j) 
                !-buoyancy excess
-               buoyx2d(k,i)   = buoyx(i,k,j) * tu_buoyx
+               buoyx2d(k,i)   = buoyx(i,k,j)
                !-- turb length scale
                turb_len_scale2d (k,i) = turb_len_scale (i,k,j)
             end do
@@ -1269,7 +1268,7 @@ module module_cu_gf_monan
                do k = kts,kte
                   rbuoyxcuten (i,k,j) = - min(0.,( outbuoy(k,i,shal)                 + &
                                                    outbuoy(k,i, mid)                 + &
-                                                   outbuoy(k,i,deep) ) * fixout_qv(i)) * tu_buoyx
+                                                   outbuoy(k,i,deep) ) * fixout_qv(i))
                   var3d1      (i,k,j) = rbuoyxcuten (i,k,j) 
                enddo
             enddo
@@ -1720,7 +1719,7 @@ module module_cu_gf_monan
         ,massfld,dh,trash,frh,xlamdd,radiusd,frhd,effec_entrain,detdo1,detdo2,entdo     &
         ,dp,subin,detdo,entup,detup,subdown,entdoj,entupk,detupk,totmas,min_entr_rate   &
         ,tot_time_hr,beta,env_mf,env_mf_p,env_mf_m,dts,denom,denomU
-      integer :: ipr=0,jpr=0,step_ent,ii
+      integer :: ipr=0,jpr=0,step_ent,i_step_ent
       integer :: k,i,iedt,nens,nens3,kii,kff
       integer :: vtp_index
       
@@ -1859,14 +1858,14 @@ module module_cu_gf_monan
       !
       step_ent = 1;   if(entr_rate_input < 0.0) step_ent = 2 
 
-      loop_entr_trigger: do ii = 1,step_ent    
+      loop_entr_trigger: do i_step_ent = 1,step_ent    
            !
            !--- define the initial entrainment rate and the mininum acceptable entrainment rate
            !--- formulation 1: reescale entrainment rate in terms of the grid spacing (Zhao et al 2024, GRL https://doi.org/10.1029/2024GL110735)
            !--- and also use larger initial entrainment rate as trigger function
            if(  entr_rate_input < 0.0 ) then 
               entr_rescaled(:) = (delta_ref/dx(:))**0.2 * fac_cold_start 
-              entr_rate    (:) = entr_ref * entr_rescaled(:) * entr_red(ii)
+              entr_rate    (:) = entr_ref * entr_rescaled(:) * entr_red(i_step_ent)
               min_entr_rate    = entr_ref * fr_min_entr * minval(entr_rescaled)
            else
            !--- formulation 2: using the namelist definition      
@@ -1903,18 +1902,11 @@ module module_cu_gf_monan
            !
            call get_lcl(cumulus,convection_tracer,use_memory,ave_layer,its,ite,itf,kts,kte,ktf,ierr &
                        ,x_add_buoy,zqexec,ztexec,xland,po,t_cup,p_cup,z_cup,q_cup,k22,klcl,zlcl_sfc)
-           
-
-           if( use_shear_ctrl_entr == -1 .and. trim(cumulus) == 'deep') then 
-               call compute_LCL(itf,its,ite,ierr,t_cup(1,:),p_cup(1,:),q_cup(1,:),zlcl_sfc)
-               call compute_VSR(itf,ktf,its,ite,kts,kte,ierr,u_cup,v_cup,zo_cup,zlcl_sfc,vshear2)
-               call compute_E_tilde(itf,its,ite,ierr,vshear2,zlcl_sfc,E_tilde)
-               do i=its,itf
-                !scale_factor(i) = max(0.05, 1.0 - E_tilde(i))
-                 entr_rate(i)    = max( max(0.05, 1.0 - E_tilde(i)) *  entr_rate(i), min_entr_rate)
-               enddo
-               !print*,"VS_R-ZLCL-E_TIL", maxval(vshear2),minval(vshear2),maxval(zlcl_sfc),minval(zlcl_sfc),maxval(E_tilde),minval(E_tilde)
-            endif
+           !--- 
+           if( use_shear_ctrl_entr < 0 .and. trim(cumulus) == 'deep') & 
+               call compute_E_tilde(itf,ktf,its,ite,kts,kte,ierr,u_cup,v_cup,zo_cup,t_cup &
+                                   ,p_cup,q_cup,zlcl_sfc,vshear2,E_tilde,i_step_ent &
+                                   ,entr_rate, min_entr_rate ) 
            !
            !--- start_level
            !
@@ -2460,10 +2452,10 @@ module module_cu_gf_monan
       if( trim(cumulus) == 'deep') then
         !var2d1(:) = aa1(:)
         !var2d2(:) = aa1_bl(:)
-        ! var2d1(:) = vshear2(:)
-         var2d1(:) = zlcl_sfc(:)
+         var2d1(:) = vshear2(:)
+         !var2d1(:) = entr_rate(:)
          var2d2(:) = E_tilde(:)
-        !var2d2(:) = x_add_buoy(:)
+         !var2d2(:) = x_add_buoy(:)
          !if( adv_trigger == 0 .and. convection_tracer == 1) then 
          !   do i=its,itf
          !      var2d2(i) = maxval( buoy_exc(kts:ktop(i),i) )
@@ -6172,7 +6164,7 @@ module module_cu_gf_monan
          ,add_coldpool_clos,add_coldpool_trig,n_cldrop                            &
          ,output_sound,use_pass_cloudvol,use_lcl_ctrl_entr,use_rhu_ctrl_entr      &
          ,cum_min_cloud_depth,use_sub3d,cum_fr_min_entr,use_shear_ctrl_entr       &
-         ,use_cwv_ctrl_entr,adv_trigger,dcape_threshold,use_cold_start,tu_buoyx
+         ,use_cwv_ctrl_entr,adv_trigger,dcape_threshold,use_cold_start
 
       if(present(IO_NODE)) then 
          local_io_node = IO_NODE
@@ -6257,8 +6249,6 @@ module module_cu_gf_monan
          print*, 'tau_land_cp        ' , tau_land_cp
          print*, 'mx_buoy1 - kJ/kg   ' , mx_buoy1*1.e-3
          print*, 'mx_buoy2 - kJ/kg   ' , mx_buoy2*1.e-3
-         print*, 'tu_buoyx - #       ' , tu_buoyx
-
          print*, 'use_pass_cloudvol  ' , use_pass_cloudvol
          print*, 'use_lcl_ctrl_entr  ' , use_lcl_ctrl_entr
          print*, 'use_rhu_ctrl_entr  ' , use_rhu_ctrl_entr
@@ -6672,11 +6662,11 @@ module module_cu_gf_monan
          do vtp_index = get_num_elements(vec_ok),1,-1
             i = get_data_value(vec_ok,vtp_index)
 
-            !call get_cloud_bc(cumulus,local_ave_layer,kts,kte,ktf,xland(i),po(kts:kte,i) &
-            !                 ,buoy_exc (kts:kte,i),x_add_buoy (i),kts)
+            call get_cloud_bc(cumulus,local_ave_layer,kts,kte,ktf,xland(i),po(kts:kte,i) &
+                             ,buoy_exc (kts:kte,i),x_add_buoy (i),kts)
             !- for gate soundings
             !x_add_buoy (i) = float(JL*40)
-            x_add_buoy (i) = maxval(buoy_exc (kts:ktf,i))
+            !x_add_buoy (i) = maxval(buoy_exc (kts:ktf,i))
             x_add_buoy (i) = min (x_add_buoy (i),mx_buoy2)
 
          enddo
@@ -7091,8 +7081,7 @@ module module_cu_gf_monan
       if(use_rhu_ctrl_entr == 1) then
 
          !-- get the environmental relative humidity
-         do vtp_index = get_num_elements(vec_ok),1,-1
-           i = get_data_value(vec_ok,vtp_index)
+         do vtp_index = get_num_elements(vec_ok),1,-1; i = get_data_value(vec_ok,vtp_index)
            rh2d(:,i) = min(qo_cup(:,i)/qeso_cup(:,i),1.)
          enddo
 
@@ -8637,10 +8626,9 @@ module module_cu_gf_monan
       add_coldpool_clos = 4
       add_coldpool_trig = 0
       tau_ocea_cp       = 3600. 
-      tau_land_cp       = 3600. 
+      tau_land_cp       = 7200. 
       mx_buoy1          = 250.5   ! J/kg (real(c_cp)*5.0 + real(c_alvl)*2.e-3)*0.025  
       mx_buoy2          = 20004.0 ! J/kg (real(c_cp)*10.+real(c_alvl)*4.e-3)
-      tu_buoyx          = 1.0
      
       use_sub3d         = 0
       use_scale_dep     = 1 
@@ -11248,7 +11236,7 @@ module module_cu_gf_monan
         allev_initial = min(max(allev_initial,0.7),1.0)
 
         !print*,"alle", itimestep,max_timesteps,width2,allev_initial,dt
-       end function
+      end function
 !---------------------------------------------------------------------------------------------!
       subroutine compute_VSR(itf,ktf,its,ite,kts,kte,ierr,u0,v0,z0,zlcl_sfc,V_SR)
           implicit none
@@ -11263,7 +11251,7 @@ module module_cu_gf_monan
           real, parameter:: propfac_coef = 1.0 &    ! Coeficiente do fator de propagação (ex: 1.0)
                            ,topheight    = 1000.0   ! Altura do topo para V_SR (ex: 1000.0)
 
-          integer :: i,ii
+          integer :: i,ii,vtp_index
           real, dimension(its:ite) :: meanx, meany, C_x, C_y 
           real                     :: sum_weight, sum_u, sum_v, dz
           real, dimension(its:ite) ::  highx, highy,lowx, lowy
@@ -11278,7 +11266,7 @@ module module_cu_gf_monan
           ! 1. Vento médio 0-6 km (ponderado pela espessura da camada)
           ! Equivalente a: np.sum(u0[f6000]*(z0[f6001]-z0[f6000])) ...
           ! ---------------------------------------------------------
-          do ii = its,itf
+          do vtp_index = get_num_elements(vec_ok),1,-1; ii = get_data_value(vec_ok,vtp_index)
               sum_u = 0.0
               sum_v = 0.0
               sum_weight = 0.0
@@ -11304,7 +11292,7 @@ module module_cu_gf_monan
           ! ---------------------------------------------------------
           ! 2. Vento médio 0-500 m (média aritmética simples)
           ! ---------------------------------------------------------
-          do ii = its,itf
+          do vtp_index = get_num_elements(vec_ok),1,-1; ii = get_data_value(vec_ok,vtp_index)
                sum_u_low = 0.0; sum_v_low = 0.0; count_low = 0
                do i = kts, ktf
                    if (z0(i,ii) <= 500.0) then
@@ -11324,7 +11312,7 @@ module module_cu_gf_monan
           ! ---------------------------------------------------------
           ! 3. Vento médio 5500-6000 m (com fallback para 0-6000m)
           ! ---------------------------------------------------------
-          do ii = its,itf
+          do vtp_index = get_num_elements(vec_ok),1,-1; ii = get_data_value(vec_ok,vtp_index)
                sum_u_high = 0.0; sum_v_high = 0.0; count_high = 0
                do i = kts,ktf
                    if (z0(i,ii) >= 5500.0 .and. z0(i,ii) <= 6000.0) then
@@ -11347,7 +11335,7 @@ module module_cu_gf_monan
           ! ---------------------------------------------------------
           ! 4. Vetores de Cisalhamento e Ortogonais de Bunkers
           ! ---------------------------------------------------------
-          do ii = its,itf
+          do vtp_index = get_num_elements(vec_ok),1,-1; ii = get_data_value(vec_ok,vtp_index)
               BK_SHRx(ii) = highx(ii) - lowx(ii)
               BK_SHRy(ii) = highy(ii) - lowy(ii)
               BK_mag(ii) = sqrt(BK_SHRx(ii)**2 + BK_SHRy(ii)**2)
@@ -11366,7 +11354,7 @@ module module_cu_gf_monan
           ! ---------------------------------------------------------
           ! 5. Cisalhamento Vertical e Cálculo da SRH (0-1000m)
           ! ---------------------------------------------------------
-          do ii = its,itf
+          do vtp_index = get_num_elements(vec_ok),1,-1; ii = get_data_value(vec_ok,vtp_index)
               dudz(:) = 0.0
               dvdz(:) = 0.0
               
@@ -11400,7 +11388,7 @@ module module_cu_gf_monan
           ! ---------------------------------------------------------
           ! 6. Fator de Propagação (propfac)
           ! ---------------------------------------------------------
-          do ii = its,itf
+          do vtp_index = get_num_elements(vec_ok),1,-1; ii = get_data_value(vec_ok,vtp_index)
              if (SRH_mean(ii) > 0.0) then
                  sign_SRH = SRH_mean(ii) / abs(SRH_mean(ii))
                  propfac(ii) = sign_SRH * propfac_coef * min(abs(SRH_mean(ii)) / 150.0, 1.0)
@@ -11416,7 +11404,7 @@ module module_cu_gf_monan
           ! ---------------------------------------------------------
           ! 7. Movimento Final da Tempestade e V_SR médio
           ! ---------------------------------------------------------
-          do ii = its,itf
+          do vtp_index = get_num_elements(vec_ok),1,-1; ii = get_data_value(vec_ok,vtp_index)
              C_x(ii) = meanx(ii) + propfac(ii) * BK_orthx(ii)
              C_y(ii) = meany(ii) + propfac(ii) * BK_orthy(ii)
              htop = topheight
@@ -11456,7 +11444,7 @@ module module_cu_gf_monan
           !real, intent(in) :: p    ! Pressure (Pa or hPa, depending on compute_rsat)
           
           ! --- Local Variables ---
-          integer :: i
+          integer :: i,vtp_index
           real :: cpm, Rm, a, b, c
           real :: r_sat, q_sat, RH
           real :: arg1, arg2, arg3
@@ -11465,7 +11453,7 @@ module module_cu_gf_monan
           ! --- External Functions Declarations ---
           !real, external :: compute_rsat
           !real, external :: lambertw
-          do i=its,itf
+          do vtp_index = get_num_elements(vec_ok),1,-1; i = get_data_value(vec_ok,vtp_index)
               
               ! ---------------------------------------------------------
               ! 1. Mixture properties
@@ -11664,23 +11652,47 @@ module module_cu_gf_monan
 
       end function omega
 !---------------------------------------------------------------------------------------------!
-      subroutine compute_E_tilde(itf,its,ite,ierr,vsr,lcl,E_tilde)
+      subroutine compute_E_tilde(itf,ktf,its,ite,kts,kte,ierr,u_cup,v_cup,zo_cup,t_cup &
+                                ,p_cup,q_cup,zlcl,vshear2,E_tilde,i_step_ent           &
+                                ,entr_rate, min_entr_rate)  
           implicit none
-          integer,intent(in) :: itf,its,ite
-          integer, dimension(:), intent(in)  :: ierr
-          real, dimension(:), intent(in)     :: lcl,vsr
-          real, dimension(:), intent(out)    :: E_tilde 
-          integer :: i
+          integer,                 intent(in) :: itf,ktf,its,ite,kts,kte,i_step_ent
+          real,                    intent(in) :: min_entr_rate
+          integer, dimension(:),   intent(in) :: ierr
+          real   , dimension(:,:), intent(in) :: u_cup,v_cup,zo_cup,p_cup,q_cup,t_cup
 
-          do i=its,itf
-            if(vsr(i) < 1.1 .or. lcl(i) <  100.) then 
-            !    E_tilde(i) = 0.05
-            else
-                E_tilde(i) = real(e_from_vsr_lcl(vsr(i),lcl(i)),4)
-                !E_tilde(i) = -1.45 + 0.38*log(vsr(i)+0.5) + 0.22*log(lcl(i)+100.)
-            endif
-            E_tilde(i) = min(max(0.0,E_tilde(i)),1.0)
+          real   , dimension(:),   intent(inout) :: zlcl,vshear2, E_tilde,entr_rate
+          !local
+          real, parameter :: entr_factor=1.3333333
+          integer :: i,vtp_index
+
+          if(i_step_ent == 1) then 
+
+               call compute_LCL(itf,its,ite,ierr,t_cup(kts,:),p_cup(kts,:),q_cup(kts,:),zlcl)
+               call compute_VSR(itf,ktf,its,ite,kts,kte,ierr,u_cup,v_cup,zo_cup,zlcl,vshear2)
+               
+               if(use_shear_ctrl_entr == -1) then 
+                  do vtp_index = get_num_elements(vec_ok),1,-1; i = get_data_value(vec_ok,vtp_index)
+                     E_tilde(i) = -1.45 + 0.38*log(vshear2(i)+0.5) + 0.22*log(zlcl(i)+100.)
+                     E_tilde(i) = min(max(0.0,E_tilde(i)),1.0)
+                  enddo
+               else
+                  do vtp_index = get_num_elements(vec_ok),1,-1; i = get_data_value(vec_ok,vtp_index)
+                     if(vshear2(i) < 1.1 .or. zlcl(i) <  100.) then 
+                          E_tilde(i) = 0.05
+                     else
+                          E_tilde(i) = real(e_from_vsr_lcl(vshear2(i),zlcl(i)),4)
+                     endif 
+                     E_tilde(i) = min(max(0.0,E_tilde(i)),1.0)
+                  enddo
+               endif
+          endif
+          !---- modify the entrainment based on LCL and wind-shear
+          do vtp_index = get_num_elements(vec_ok),1,-1; i = get_data_value(vec_ok,vtp_index)
+             entr_rate(i) = max( max(0.05, 1.0 - E_tilde(i)) *  entr_rate(i), min_entr_rate)
+             entr_rate(i) = entr_rate(i)*entr_factor
           enddo
+          
       end subroutine compute_E_tilde
 !---------------------------------------------------------------------------------------------!
       pure real(8) function e_from_vsr_lcl(vsri, lcli) result(e_value)
