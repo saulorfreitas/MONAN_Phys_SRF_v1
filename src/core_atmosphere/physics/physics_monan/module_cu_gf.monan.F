@@ -1718,7 +1718,7 @@ module module_cu_gf_monan
       real :: day,dz,dzo,radius,entrd_rate,zcutdown,depth_min,zkbmax,z_detr,zktop       &
         ,massfld,dh,trash,frh,xlamdd,radiusd,frhd,effec_entrain,detdo1,detdo2,entdo     &
         ,dp,subin,detdo,entup,detup,subdown,entdoj,entupk,detupk,totmas,min_entr_rate   &
-        ,tot_time_hr,beta,env_mf,env_mf_p,env_mf_m,dts,denom,denomU
+        ,tot_time_hr,beta,env_mf,env_mf_p,env_mf_m,dts,denom,denomU, entr_factor
       integer :: ipr=0,jpr=0,step_ent,i_step_ent
       integer :: k,i,iedt,nens,nens3,kii,kff
       integer :: vtp_index
@@ -1860,12 +1860,16 @@ module module_cu_gf_monan
 
       loop_entr_trigger: do i_step_ent = 1,step_ent    
            !
+           !---- tmp
+           entr_factor = 1.0
+           if( use_shear_ctrl_entr < 0 .and. trim(cumulus) == 'deep') entr_factor = 1.33333
+
            !--- define the initial entrainment rate and the mininum acceptable entrainment rate
            !--- formulation 1: reescale entrainment rate in terms of the grid spacing (Zhao et al 2024, GRL https://doi.org/10.1029/2024GL110735)
            !--- and also use larger initial entrainment rate as trigger function
            if(  entr_rate_input < 0.0 ) then 
               entr_rescaled(:) = (delta_ref/dx(:))**0.2 * fac_cold_start 
-              entr_rate    (:) = entr_ref * entr_rescaled(:) * entr_red(i_step_ent)
+              entr_rate    (:) = entr_ref * entr_rescaled(:) * entr_red(i_step_ent) * entr_factor
               min_entr_rate    = entr_ref * fr_min_entr * minval(entr_rescaled)
            else
            !--- formulation 2: using the namelist definition      
@@ -1906,7 +1910,7 @@ module module_cu_gf_monan
            if( use_shear_ctrl_entr < 0 .and. trim(cumulus) == 'deep') & 
                call compute_E_tilde(itf,ktf,its,ite,kts,kte,ierr,u_cup,v_cup,zo_cup,t_cup &
                                    ,p_cup,q_cup,zlcl_sfc,vshear2,E_tilde,i_step_ent &
-                                   ,entr_rate, min_entr_rate ) 
+                                   ,entr_rate, min_entr_rate, xland, var2d1, var2d2) 
            !
            !--- start_level
            !
@@ -2452,9 +2456,9 @@ module module_cu_gf_monan
       if( trim(cumulus) == 'deep') then
         !var2d1(:) = aa1(:)
         !var2d2(:) = aa1_bl(:)
-         var2d1(:) = vshear2(:)
+          var2d1(:) = vshear2(:)
          !var2d1(:) = entr_rate(:)
-         var2d2(:) = E_tilde(:)
+          var2d2(:) = E_tilde(:)
          !var2d2(:) = x_add_buoy(:)
          !if( adv_trigger == 0 .and. convection_tracer == 1) then 
          !   do i=its,itf
@@ -11654,17 +11658,23 @@ module module_cu_gf_monan
 !---------------------------------------------------------------------------------------------!
       subroutine compute_E_tilde(itf,ktf,its,ite,kts,kte,ierr,u_cup,v_cup,zo_cup,t_cup &
                                 ,p_cup,q_cup,zlcl,vshear2,E_tilde,i_step_ent           &
-                                ,entr_rate, min_entr_rate)  
+                                ,entr_rate, min_entr_rate, xland, var2d1, var2d2)  
           implicit none
           integer,                 intent(in) :: itf,ktf,its,ite,kts,kte,i_step_ent
           real,                    intent(in) :: min_entr_rate
           integer, dimension(:),   intent(in) :: ierr
+          real   , dimension(:),   intent(in) :: xland
+
           real   , dimension(:,:), intent(in) :: u_cup,v_cup,zo_cup,p_cup,q_cup,t_cup
 
-          real   , dimension(:),   intent(inout) :: zlcl,vshear2, E_tilde,entr_rate
+          real   , dimension(:),   intent(inout) :: zlcl,vshear2, E_tilde,entr_rate,var2d1,var2d2
           !local
-          real, parameter :: entr_factor=1.3333333
+          real, parameter :: center1 = 5.0   , width1 = 2.0  , sharpness1 = 5.0
+          real, parameter :: center2 = 2400.0, width2 = 800.0, sharpness2 = 5.0
+          real, parameter :: center3 = 0.5, width3 = 0.1, sharpness3 = 2.0
+
           integer :: i,vtp_index
+          real :: scale_factor1, scale_factor2,mask,scale_factor3
 
           if(i_step_ent == 1) then 
 
@@ -11673,26 +11683,39 @@ module module_cu_gf_monan
                
                if(use_shear_ctrl_entr == -1) then 
                   do vtp_index = get_num_elements(vec_ok),1,-1; i = get_data_value(vec_ok,vtp_index)
-                     E_tilde(i) = -1.45 + 0.38*log(vshear2(i)+0.5) + 0.22*log(zlcl(i)+100.)
+                    !E_tilde(i) = -1.45 + 0.38*log(vshear2(i)+0.5) + 0.22*log(zlcl(i)+100.)
+                     E_tilde(i) = real(e_from_lcl_vsr_chebyshev(vshear2(i),zlcl(i)),4)
                      E_tilde(i) = min(max(0.0,E_tilde(i)),1.0)
                   enddo
                else
                   do vtp_index = get_num_elements(vec_ok),1,-1; i = get_data_value(vec_ok,vtp_index)
-                     if(vshear2(i) < 1.1 .or. zlcl(i) <  100.) then 
-                          E_tilde(i) = 0.05
-                     else
-                          E_tilde(i) = real(e_from_vsr_lcl(vshear2(i),zlcl(i)),4)
-                     endif 
-                     E_tilde(i) = min(max(0.0,E_tilde(i)),1.0)
+                     scale_factor1 = max(0., min(scale_factor1,1.))
+                     scale_factor2 = 1. + tanh(sharpness2 * (zlcl(i) - center2) / width2)
+                     scale_factor2 = 1. - max(0., min(scale_factor2,1.))
+                     E_tilde(i) = real(e_from_vsr_lcl(vshear2(i),zlcl(i)),4)
+                     E_tilde(i) = E_tilde(i) * scale_factor1 * scale_factor2
+                     mask       = 1.-xland(i) + xland(i)*0.3
+                     E_tilde(i) = min(max(0.0,E_tilde(i)),mask)
                   enddo
+                  if(use_shear_ctrl_entr == -3) then 
+                     do vtp_index = get_num_elements(vec_ok),1,-1; i = get_data_value(vec_ok,vtp_index)
+
+                        !-- boost the entr lowering for high wind shear/high lcl
+                        scale_factor3 = 1. + tanh(sharpness3 * (E_tilde(i) - center3) / width3)
+                        scale_factor3 = max(0., min(scale_factor3,1.))
+                        E_tilde(i) = scale_factor3 *(E_tilde(i)**(0.25)) + (1.-scale_factor3)*E_tilde(i)
+                        E_tilde(i) = min(max(0.0,E_tilde(i)),1.0)
+                     enddo
+                  endif
                endif
           endif
           !---- modify the entrainment based on LCL and wind-shear
           do vtp_index = get_num_elements(vec_ok),1,-1; i = get_data_value(vec_ok,vtp_index)
              entr_rate(i) = max( max(0.05, 1.0 - E_tilde(i)) *  entr_rate(i), min_entr_rate)
-             entr_rate(i) = entr_rate(i)*entr_factor
-          enddo
-          
+             !if(i_step_ent == 1) var2d1(i) =  entr_rate(i) *1000.
+             !if(i_step_ent == 2) var2d2(i) =  entr_rate(i) *1000.
+            enddo
+   
       end subroutine compute_E_tilde
 !---------------------------------------------------------------------------------------------!
       pure real(8) function e_from_vsr_lcl(vsri, lcli) result(e_value)
@@ -11739,6 +11762,134 @@ module module_cu_gf_monan
           e_value = min(1.0, max(0.0, raw_e))
       end function e_from_vsr_lcl
 !---------------------------------------------------------------------------------------------!
+      pure real(8) function e_from_lcl_vsr_chebyshev(vsr, lcl) result(e_value)
+         integer, parameter :: degree_vsr = 10
+         integer, parameter :: degree_lcl = 10
+         real(8), parameter :: vsr_max = 35.0
+         real(8), parameter :: lcl_max = 5000.0
+         real(8), parameter :: vsr_log_scale = 1.0
+         real(8), parameter :: lcl_log_scale = 1000.0
+
+         ! Coefficients c(i,j), flattened as i*11 + j, where
+         ! i is the VSR Chebyshev order and j is the LCL Chebyshev order.
+         real(8), parameter :: coefficients(0:120) = [      &
+           4.9312415561753814e-01,  2.2868975502346006e-01, &
+          -8.8761579807841190e-02,  2.7269403163071262e-02, &
+          -1.2295133673836084e-02,  8.8272363760105443e-03, &
+          -6.6688742854731364e-03,  4.6115127013017961e-03, &
+          -3.1309655900965579e-03,  1.8168162771307651e-03, &
+          -9.9637493363658597e-04, &
+           5.4983812084125583e-01,  1.4601399964821318e-01, &
+          -1.0704566660370185e-01,  5.3996756535225524e-02, &
+          -2.3685551957642572e-02,  1.3658302539491490e-02, &
+          -1.1460455404458163e-02,  9.3088050897264241e-03, &
+          -7.2437897613416985e-03,  4.6341303083324327e-03, &
+          -2.7257174326871629e-03, &
+           4.0013479869117172e-02, -1.3199138800053142e-01, &
+           1.1233217869127357e-02,  1.9953679996161384e-02, &
+          -9.8784716098468672e-03,  8.8668783987705564e-04, &
+           7.8608586127756896e-04, -1.2843914132975708e-04, &
+          -6.6291826482155550e-04,  7.7153833574901062e-04, &
+          -7.6378155344888204e-04, &
+          -5.4092168212008032e-03, -2.7222386094342042e-02, &
+           3.2493980675232098e-02, -1.3612869593740279e-02, &
+           2.8301395579361094e-03, -3.3345891373155329e-03, &
+           5.5170244092312901e-03, -5.2696962639739511e-03, &
+           3.8064151739771873e-03, -2.0810936109359641e-03, &
+           9.5838320236522542e-04, &
+           2.5053776932028298e-02,  2.0349003548242570e-02, &
+           6.2674444352166861e-03, -1.3253034586783823e-02, &
+           9.1204088940218184e-03, -5.5588985415446004e-03, &
+           6.8919323739511373e-03, -8.3573193584328964e-03, &
+           8.9173178756707452e-03, -6.6463064210718452e-03, &
+           4.2828629830922137e-03, &
+           8.2097902996381561e-03, -4.8693672479953806e-03, &
+          -2.4459617929903851e-03,  8.8250990401459936e-04, &
+           1.9596713852971757e-03, -1.1430312512244467e-03, &
+           1.2805827584997237e-03, -2.4337081052447362e-03, &
+           4.9335869321141812e-03, -4.9258334673918276e-03, &
+           4.1388865267713813e-03, &
+           1.1264806017655601e-03, -9.8055582579032949e-03, &
+           4.0308170169100228e-03, -2.5139348813484549e-03, &
+           9.0041919186045066e-04,  6.2808550240867934e-04, &
+          -1.2966815377304722e-03,  1.5990605905371238e-03, &
+          -4.2502079972620010e-04, -5.8591390907586881e-04, &
+           1.4252981422090364e-03, &
+           3.3474559327072648e-03, -2.3726890302384201e-03, &
+           5.1210205869994009e-03, -4.7938859820270512e-03, &
+           4.2197495063999030e-03, -2.1757442832887400e-03, &
+          -1.4752253791464054e-04,  1.5779893244704524e-03, &
+          -2.5697351916668457e-03,  2.3312414910015601e-03, &
+          -1.5122641178762688e-03, &
+           8.6823776431141364e-06, -5.3219279022682225e-04, &
+           2.9161924450212678e-04, -3.4277536440507211e-04, &
+           9.3788697167141236e-04, -1.5668344861100719e-03, &
+           3.7726032645962401e-04,  7.0349951632767659e-04, &
+          -2.1283551974789613e-03,  2.4114864088602347e-03, &
+          -2.3324457141567015e-03, &
+           1.7230447382930378e-03, -2.1035437517537489e-03, &
+           1.6416957631378085e-03, -2.2955317168124219e-03, &
+           1.0707587206970990e-03, -8.9921675625258268e-04, &
+           1.6464416366179721e-03, -2.0545030889165018e-03, &
+           1.6920012675862139e-03, -1.0237162023683175e-03, &
+           1.7082049875050132e-04, &
+          -2.5282276150231098e-03,  3.8740640984158796e-03, &
+          -4.6803104970061793e-03,  4.3044253968760847e-03, &
+          -3.4775295802564610e-03,  3.7755022147547244e-03, &
+          -4.1716455718732240e-03,  3.6149504003930646e-03, &
+          -2.8326213360365775e-03,  1.8187923521932586e-03, &
+          -9.9273654044857579e-04 &
+         ]
+   
+         real(4), intent(in) :: lcl
+         real(4), intent(in) :: vsr
+         real(8) :: tx(0:degree_vsr)
+         real(8) :: ty(0:degree_lcl)
+         real(8) :: x
+         real(8) :: y
+         real(8) :: raw_e
+         integer :: i
+         integer :: j
+   
+         !if (ieee_is_nan(lcl)) then
+         !  e_value = ieee_value(lcl, ieee_quiet_nan)
+         !  return
+         !end if
+   
+         !if (ieee_is_nan(vsr)) then
+         !  e_value = ieee_value(vsr, ieee_quiet_nan)
+         !  return
+         !end if
+   
+         x = 2.0 * log(1.0 + vsr / vsr_log_scale) / &
+             log(1.0 + vsr_max / vsr_log_scale) - 1.0
+         y = 2.0 * log(1.0 + lcl / lcl_log_scale) / &
+             log(1.0 + lcl_max / lcl_log_scale) - 1.0
+   
+         tx(0) = 1.0
+         tx(1) = x
+         do i = 2, degree_vsr
+           tx(i) = 2.0 * x * tx(i - 1) - tx(i - 2)
+         end do
+   
+         ty(0) = 1.0
+         ty(1) = y
+         do j = 2, degree_lcl
+           ty(j) = 2.0 * y * ty(j - 1) - ty(j - 2)
+         end do
+   
+         raw_e = 0.0
+         do i = 0, degree_vsr
+           do j = 0, degree_lcl
+             raw_e = raw_e + coefficients(i * (degree_lcl + 1) + j) * tx(i) * ty(j)
+           end do
+         end do
+   
+      e_value = min(1.25, max(0.0, raw_e))
+    end function e_from_lcl_vsr_chebyshev      
+!---------------------------------------------------------------------------------------------!
+
+
 !- list of ierr reasons:
 ! ierr(i)=21   ==>  ierrc(i)='for shallow convection:  LCL height < PBL height'
 ! ierr(i)=22   ==>  ierrc(i)="ke_gustfront less than -cin1"
