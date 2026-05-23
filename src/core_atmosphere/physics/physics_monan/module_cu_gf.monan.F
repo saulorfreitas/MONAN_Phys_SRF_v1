@@ -11689,8 +11689,9 @@ module module_cu_gf_monan
                   enddo
                else
                   do vtp_index = get_num_elements(vec_ok),1,-1; i = get_data_value(vec_ok,vtp_index)
-                     scale_factor1 = max(0., min(scale_factor1,1.))
-                     scale_factor2 = 1. + tanh(sharpness2 * (zlcl(i) - center2) / width2)
+                     scale_factor1 = 1. + tanh(sharpness1 * (vshear2(i) - center1) / width1)
+                     scale_factor2 = 1. + tanh(sharpness2 * (zlcl(i)    - center2) / width2)
+                     scale_factor1 =      max(0., min(scale_factor1,1.))
                      scale_factor2 = 1. - max(0., min(scale_factor2,1.))
                      E_tilde(i) = real(e_from_vsr_lcl(vshear2(i),zlcl(i)),4)
                      E_tilde(i) = E_tilde(i) * scale_factor1 * scale_factor2
