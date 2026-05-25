@@ -11671,7 +11671,7 @@ module module_cu_gf_monan
           !local
           real, parameter :: center1 = 5.0   , width1 = 2.0  , sharpness1 = 5.0
           real, parameter :: center2 = 2400.0, width2 = 800.0, sharpness2 = 5.0
-          real, parameter :: center3 = 0.5, width3 = 0.1, sharpness3 = 2.0
+          real, parameter :: center3 = 0.5   , width3 = 0.1  , sharpness3 = 2.0
 
           integer :: i,vtp_index
           real :: scale_factor1, scale_factor2,mask,scale_factor3
@@ -11760,7 +11760,7 @@ module module_cu_gf_monan
                     0.7352760976228332)
 
           raw_e = ((((a4 * lcl_scaled + a3) * lcl_scaled + a2) * lcl_scaled + a1) * lcl_scaled + a0)
-          e_value = min(1.0, max(0.0, raw_e))
+          e_value = min(1.0, max(0.0, real(raw_e,4)))
       end function e_from_vsr_lcl
 !---------------------------------------------------------------------------------------------!
       pure real(8) function e_from_lcl_vsr_chebyshev(vsr, lcl) result(e_value)
@@ -11886,7 +11886,7 @@ module module_cu_gf_monan
            end do
          end do
    
-      e_value = min(1.25, max(0.0, raw_e))
+         e_value = min(1.25, max(0.0, real(raw_e,4)))
     end function e_from_lcl_vsr_chebyshev      
 !---------------------------------------------------------------------------------------------!
 
