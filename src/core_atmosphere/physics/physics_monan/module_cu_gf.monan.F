@@ -1736,7 +1736,7 @@ module module_cu_gf_monan
         ,vvel1d, x_add_buoy,lambau_dn,lambau_dp,q_wetbulb,t_wetbulb,col_sat_adv            &
         ,Q_adv,alpha_adv,aa1_radpbl,p_cwv_ave,cape, depth_neg_buoy,frh_bcon                &
         ,check_sig,random,rh_entr_factor,rntot,delqev,delq2,qevap,rn,qcond,rainevap,vshear2&
-        ,entr_rescaled,precip_rescaled,E_tilde
+        ,entr_rescaled,precip_rescaled,E_tilde,bulk_wshear_factor
 
       real, dimension (kts:kte) ::xh_env_eff
 
@@ -1805,7 +1805,7 @@ module module_cu_gf_monan
                    ,aa1_bl,aa1_fa,aa0_bl,q_adv,aa1_radpbl,alpha_adv,cin1          &
                    ,xk_x,edt,edto,tau_bl,q_wetbulb,t_wetbulb,tau_ecmwf,xf_dicycle &
                    ,x_add_buoy,xf_coldpool,wlpool_bcon,ke_gustfront,random,mbdt   &
-                   ,ave_from_surface,precip_rescaled)
+                   ,ave_from_surface,precip_rescaled,bulk_wshear_factor)
 
       call reset_2d(its,ite,kts,kte,zo,z,xz,hcdo,cupclw,qrcdo,hcot,xf_ens,pr_ens  &
                    ,evap_bcb,uc,vc,hc,hco, zuo,zdo,zenv)
@@ -1908,9 +1908,9 @@ module module_cu_gf_monan
                        ,x_add_buoy,zqexec,ztexec,xland,po,t_cup,p_cup,z_cup,q_cup,k22,klcl,zlcl_sfc)
            !--- 
            if( use_shear_ctrl_entr < 0 .and. trim(cumulus) == 'deep') & 
-               call compute_E_tilde(itf,ktf,its,ite,kts,kte,ierr,u_cup,v_cup,zo_cup,t_cup &
-                                   ,p_cup,q_cup,zlcl_sfc,vshear2,E_tilde,i_step_ent &
-                                   ,entr_rate, min_entr_rate, xland, var2d1, var2d2) 
+               call compute_E_tilde(itf,ktf,its,ite,kts,kte,ierr,u_cup,v_cup,zo_cup,t_cup     &
+                                   ,p_cup,q_cup,zlcl_sfc,vshear2,E_tilde,i_step_ent,entr_rate &
+                                   ,bulk_wshear_factor, min_entr_rate, xland, var2d1, var2d2) 
            !
            !--- start_level
            !
@@ -2456,8 +2456,9 @@ module module_cu_gf_monan
       if( trim(cumulus) == 'deep') then
         !var2d1(:) = aa1(:)
         !var2d2(:) = aa1_bl(:)
-          var2d1(:) = vshear2(:)
+         ! var2d1(:) = vshear2(:)
          !var2d1(:) = entr_rate(:)
+          var2d1(:) = bulk_wshear_factor(:)
           var2d2(:) = E_tilde(:)
          !var2d2(:) = x_add_buoy(:)
          !if( adv_trigger == 0 .and. convection_tracer == 1) then 
@@ -10757,7 +10758,7 @@ module module_cu_gf_monan
                       ,aa1_bl,aa1_fa,aa0_bl,q_adv,aa1_radpbl,alpha_adv,cin1&
                       ,xk_x,edt,edto,tau_bl,q_wetbulb,t_wetbulb,tau_ecmwf,xf_dicycle&
                       ,x_add_buoy,xf_coldpool,wlpool_bcon,ke_gustfront,random,mbdt  &
-                      ,ave_from_surface,precip_rescaled)
+                      ,ave_from_surface,precip_rescaled,bulk_wshear_factor)
          implicit none       
          logical, intent (inout)                     :: ave_from_surface
          integer, intent (in)                        :: its,ite
@@ -10790,7 +10791,8 @@ module module_cu_gf_monan
             ke_gustfront,&
             random      ,&
             mbdt        ,&
-            precip_rescaled
+            precip_rescaled, &
+            bulk_wshear_factor
             !---
             ierrc  (:) = "ierrtxt"
             
@@ -10820,6 +10822,8 @@ module module_cu_gf_monan
             wlpool_bcon(:) = 0.0
             ke_gustfront(:)= 0.0
             random      (:)= 0.0
+            bulk_wshear_factor(:) = 0.0
+            !
             precip_rescaled (:) = 1.0
             !
             !--- mbdt ~ xmb * timescale
@@ -11657,26 +11661,30 @@ module module_cu_gf_monan
       end function omega
 !---------------------------------------------------------------------------------------------!
       subroutine compute_E_tilde(itf,ktf,its,ite,kts,kte,ierr,u_cup,v_cup,zo_cup,t_cup &
-                                ,p_cup,q_cup,zlcl,vshear2,E_tilde,i_step_ent           &
-                                ,entr_rate, min_entr_rate, xland, var2d1, var2d2)  
+                                ,p_cup,q_cup,zlcl,vshear2,E_tilde,i_step_ent,entr_rate &
+                                ,bulk_wshear_factor,min_entr_rate, xland, var2d1, var2d2)  
           implicit none
-          integer,                 intent(in) :: itf,ktf,its,ite,kts,kte,i_step_ent
-          real,                    intent(in) :: min_entr_rate
-          integer, dimension(:),   intent(in) :: ierr
-          real   , dimension(:),   intent(in) :: xland
+          integer,                intent(in) :: itf,ktf,its,ite,kts,kte,i_step_ent
+          real,                   intent(in) :: min_entr_rate
+          integer,dimension(:),   intent(in) :: ierr
+          real   ,dimension(:),   intent(in) :: xland
 
-          real   , dimension(:,:), intent(in) :: u_cup,v_cup,zo_cup,p_cup,q_cup,t_cup
+          real   ,dimension(:,:), intent(in) :: u_cup,v_cup,zo_cup,p_cup,q_cup,t_cup
 
-          real   , dimension(:),   intent(inout) :: zlcl,vshear2, E_tilde,entr_rate,var2d1,var2d2
+          real   ,dimension(:),   intent(inout) :: zlcl,vshear2,E_tilde,entr_rate,var2d1,var2d2,bulk_wshear_factor
           !local
-          real, parameter :: center1 = 5.0   , width1 = 2.0  , sharpness1 = 5.0
-          real, parameter :: center2 = 2400.0, width2 = 800.0, sharpness2 = 5.0
-          real, parameter :: center3 = 0.5   , width3 = 0.1  , sharpness3 = 2.0
+          integer,parameter :: k975    = 3     ! approx surface level
+          real   ,parameter :: p600    = 600.  ! upper level of shear calculation
+          real   ,parameter :: center1 = 5.0   , width1 = 2.0  , sharpness1 = 5.0
+          real   ,parameter :: center2 = 2400.0, width2 = 800.0, sharpness2 = 5.0
+          real   ,parameter :: center3 = 0.5   , width3 = 0.1  , sharpness3 = 2.0
+          real   ,parameter :: center4 = 5.0   , width4 = 4.0  , sharpness4 = 2.0 , increase_entr_factor = 0.5
 
-          integer :: i,vtp_index
-          real :: scale_factor1, scale_factor2,mask,scale_factor3
+          integer :: i,vtp_index,k1,k2
+          real :: scale_factor1, scale_factor2,mask,scale_factor3,scale_factor4
+          real :: u1,v1,u2,v2,vshear
 
-          if(i_step_ent == 1) then 
+          if(i_step_ent == 1) then  
 
                call compute_LCL(itf,its,ite,ierr,t_cup(kts,:),p_cup(kts,:),q_cup(kts,:),zlcl)
                call compute_VSR(itf,ktf,its,ite,kts,kte,ierr,u_cup,v_cup,zo_cup,zlcl,vshear2)
@@ -11698,25 +11706,35 @@ module module_cu_gf_monan
                      mask       = 1.-xland(i) + xland(i)*0.3
                      E_tilde(i) = min(max(0.0,E_tilde(i)),mask)
                   enddo
-                  if(use_shear_ctrl_entr == -3) then 
+                  if(use_shear_ctrl_entr == -3) then  !-- boost the entr lowering for high wind shear/high lcl
                      do vtp_index = get_num_elements(vec_ok),1,-1; i = get_data_value(vec_ok,vtp_index)
-
-                        !-- boost the entr lowering for high wind shear/high lcl
                         scale_factor3 = 1. + tanh(sharpness3 * (E_tilde(i) - center3) / width3)
                         scale_factor3 = max(0., min(scale_factor3,1.))
                         E_tilde(i) = scale_factor3 *(E_tilde(i)**(0.25)) + (1.-scale_factor3)*E_tilde(i)
                         E_tilde(i) = min(max(0.0,E_tilde(i)),1.0)
                      enddo
                   endif
+                  if(use_shear_ctrl_entr == -4) then ! increase entrainment rate for bulk wind shear between (1000 - 600 hPa ) < 5 m/s
+                     do vtp_index = get_num_elements(vec_ok),1,-1; i = get_data_value(vec_ok,vtp_index)
+                           k1 = k975                                   ; u1 = u_cup(k1,i) ; v1 = v_cup(k1,i)
+                           k2 = minloc( abs(p_cup(kts:ktf,i)-p600),1 ) ; u2 = u_cup(k2,i) ; v2 = v_cup(k2,i)
+                           vshear = sqrt( (u2-u1)**2 + (v2-v1)**2 )
+                           scale_factor4 = 1.0 - increase_entr_factor*tanh(sharpness4 * (vshear - center4) / width4)
+                           scale_factor4 = max(0., max(scale_factor4,1.)) ! = 1 for vshear > 5, [1.5, 1] for vshear [0, 5]
+                           bulk_wshear_factor(i) = scale_factor4 - 1.0    ! = 0 for vshear > 5, [0, 0.5] for vshear [5, 0]
+                     enddo
+                  endif 
                endif
           endif
           !---- modify the entrainment based on LCL and wind-shear
           do vtp_index = get_num_elements(vec_ok),1,-1; i = get_data_value(vec_ok,vtp_index)
-             entr_rate(i) = max( max(0.05, 1.0 - E_tilde(i)) *  entr_rate(i), min_entr_rate)
+            !                            source of organization                                  sink of organization
+            !                              decrease entr rate                                     increase entr rate
+             entr_rate(i) = max( max(0.05, 1.0 - E_tilde(i)) *  entr_rate(i), min_entr_rate) * ( 1.0 + bulk_wshear_factor(i) )
              !if(i_step_ent == 1) var2d1(i) =  entr_rate(i) *1000.
              !if(i_step_ent == 2) var2d2(i) =  entr_rate(i) *1000.
-            enddo
-   
+          enddo
+
       end subroutine compute_E_tilde
 !---------------------------------------------------------------------------------------------!
       pure real(8) function e_from_vsr_lcl(vsri, lcli) result(e_value)
