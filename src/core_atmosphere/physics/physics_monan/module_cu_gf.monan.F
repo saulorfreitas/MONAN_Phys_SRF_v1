@@ -11706,7 +11706,7 @@ module module_cu_gf_monan
                      mask       = 1.-xland(i) + xland(i)*0.3
                      E_tilde(i) = min(max(0.0,E_tilde(i)),mask)
                   enddo
-                  if(use_shear_ctrl_entr == -3) then  !-- boost the entr lowering for high wind shear/high lcl
+                  if(use_shear_ctrl_entr == -3 .or. use_shear_ctrl_entr == -4) then  !-- boost the entr lowering for high wind shear/high lcl
                      do vtp_index = get_num_elements(vec_ok),1,-1; i = get_data_value(vec_ok,vtp_index)
                         scale_factor3 = 1. + tanh(sharpness3 * (E_tilde(i) - center3) / width3)
                         scale_factor3 = max(0., min(scale_factor3,1.))
@@ -11728,9 +11728,11 @@ module module_cu_gf_monan
           endif
           !---- modify the entrainment based on LCL and wind-shear
           do vtp_index = get_num_elements(vec_ok),1,-1; i = get_data_value(vec_ok,vtp_index)
-            !                            source of organization                                  sink of organization
-            !                              decrease entr rate                                     increase entr rate
-             entr_rate(i) = max( max(0.05, 1.0 - E_tilde(i)) *  entr_rate(i), min_entr_rate) * ( 1.0 + bulk_wshear_factor(i) )
+            !                     source of organization                    sink of organization
+            !                      decrease entr rate                        increase entr rate
+             entr_rate(i) = max(0.05, 1.0 - E_tilde(i)) *  entr_rate(i) * (1.0 + bulk_wshear_factor(i))
+             entr_rate(i) = max(entr_rate(i), min_entr_rate)
+
              !if(i_step_ent == 1) var2d1(i) =  entr_rate(i) *1000.
              !if(i_step_ent == 2) var2d2(i) =  entr_rate(i) *1000.
           enddo
