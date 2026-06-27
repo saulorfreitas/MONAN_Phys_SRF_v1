@@ -457,10 +457,10 @@ module module_cu_gf_monan
       real,dimension(ims:ime,kms:kme,jms:jme) ,intent(inout):: rthcuten,rqvcuten,rqccuten,rqicuten &
                                                               ,rucuten,rvcuten,rbuoyxcuten,rcnvcfcuten
 
-      real,dimension(ims:ime,kms:kme,jms:jme) ,intent(inout):: sub3d_rthcuten         &
-                                                               ,sub3d_rqvcuten        &
-                                                               ,sub3d_rucuten         &
-                                                               ,sub3d_rvcuten
+      real,dimension(ims:ime,kms:kme,jms:jme) ,intent(inout):: sub3d_rthcuten        &
+                                                              ,sub3d_rqvcuten        &
+                                                              ,sub3d_rucuten         &
+                                                              ,sub3d_rvcuten
       !---intent out arguments
       real,dimension(ims:ime,jms:jme)         ,intent(out):: rmfxdpcu,rmfxmdcu,rmfxshcu &
                                                             ,rtopdpcu,rtopmdcu,rtopshcu &
@@ -2186,7 +2186,8 @@ module module_cu_gf_monan
       !--- change per unit mass that a model cloud would modify the environment
       !
       call get_dellas(vert_discr,use_fct,alp1,dtime,itf,ktf, its,ite, kts              &
-                     ,kte,ierr,ktop,edto,po_cup,hco,heo,heo_cup,hcdo,qo,qco,qrco       &
+                     ,kte,ierr,ktop,edto,cumulus                                       &
+                     ,po_cup,hco,heo,heo_cup,hcdo,qo,qco,qrco                          &
                      ,qrcdo,qo_cup,qcdo,pwo,pwdo,p_liq_ice,melting,dbydo,us,vs         &
                      ,uc,vc,u_cup,v_cup,ucd,vcd,zuo,zdo,zenv,dd_massdetro,dd_massentro &
                      ,up_massentro,up_massdetro,dellu, dellv, dellah, dellat, dellaq   &
@@ -2210,7 +2211,7 @@ module module_cu_gf_monan
 
       !--- using dellas, calculate changed environmental profiles
       !
-      call get_env_change(itf,ktf,its,ite,kts,kte,ierr,heo,qo,tn,p_liq_ice,mbdt,dellu,dellv &
+      call get_env_change(cumulus,itf,ktf,its,ite,kts,kte,ierr,heo,qo,tn,p_liq_ice,mbdt,dellu,dellv &
                          ,dellah,dellat,dellaq,dellaqc,subten_h,subten_q,subten_t,xhe,xq,xt)
       !
       !
@@ -2383,7 +2384,7 @@ module module_cu_gf_monan
          dd_massdetro(:,i) = xmb(i)*dd_massdetro(:,i)
          zenv        (:,i) = xmb(i)*zenv        (:,i)
       end do
-      if(use_sub3d > 0) then
+      if(use_sub3d > 0 .and. trim(cumulus) == 'deep') then
         do vtp_index = get_num_elements(vec_ok),1,-1
          i = get_data_value(vec_ok,vtp_index)
          subten_Q    (:,i) = xmb(i)*subten_Q    (:,i)
@@ -4701,7 +4702,7 @@ module module_cu_gf_monan
          endif
       enddo
       
-      if(use_sub3d == 0) then 
+      if(use_sub3d == 0 .or. trim(cumulus) == 'shallow' .or. trim(cumulus) == 'mid' ) then 
          !-apply the scale-dependence Arakawa's approach
          do vtp_index = get_num_elements(vec_ok),1,-1
            i = get_data_value(vec_ok,vtp_index)
@@ -4712,7 +4713,7 @@ module module_cu_gf_monan
               ierr(i)=14 ; is_removed = remove(vec_ok, i)
            endif 
            if(xmb(i) > 100.) then 
-             ierr(i)=15 ; is_removed = remove(vec_ok, i)
+              ierr(i)=15 ; is_removed = remove(vec_ok, i)
            endif 
         enddo
       endif 
@@ -6216,10 +6217,10 @@ module module_cu_gf_monan
             use_sub3d = 0
          endif
          if(config_gf_sub3d > 0) then
-            use_scale_dep = 1
-            if(icumulus_gf(shal) /= OFF .or. icumulus_gf(mid) /= OFF) then
-              stop "only deep plume is allowed with sub3d"
-            endif 
+            use_sub3d         = 1
+            use_scale_dep     = 1 ! do not change this
+            !icumulus_gf(shal) = 0
+            !icumulus_gf(mid)  = 0
          endif
       endif
 
@@ -7884,7 +7885,7 @@ module module_cu_gf_monan
                end do
       end do
       
-      if(use_sub3d > 0) then
+      if(use_sub3d > 0 .and. trim(cumulus) == 'deep') then
          do vtp_index = get_num_elements(vec_ok),1,-1
                i = get_data_value(vec_ok,vtp_index)
                tend2d = 0.
@@ -7914,11 +7915,12 @@ module module_cu_gf_monan
 
    end  subroutine smooth_tend
    !----------------------------------------------------------------------
-   subroutine get_env_change(itf,ktf, its,ite, kts,kte,ierr                &
+   subroutine get_env_change(cumulus,itf,ktf, its,ite, kts,kte,ierr                &
                             ,heo,qo,tn,p_liq_ice,mbdt,dellu, dellv, dellah &
                             ,dellat, dellaq,dellaqc, subten_h, subten_q    &
                             ,subten_t ,xhe,xq,xt)
       implicit none
+      character*(*), intent (in)               :: cumulus
       integer  ,intent (in )                 :: itf,ktf, its,ite, kts,kte
      
       integer  ,intent (in ), dimension(:)   :: ierr
@@ -7952,7 +7954,7 @@ module module_cu_gf_monan
             enddo
       enddo
       !--- temp tendency due to the environmental subsidence
-      if(use_sub3d > 0) then 
+      if(use_sub3d > 0 .and. trim(cumulus) == 'deep') then 
         do vtp_index = get_num_elements(vec_ok),1,-1
           i = get_data_value(vec_ok,vtp_index)
           do k=kts,ktf         !
@@ -7964,7 +7966,7 @@ module module_cu_gf_monan
    end subroutine get_env_change
    !----------------------------------------------------------------------
    subroutine get_dellas(vert_discr,use_fct,alp1,dtime,itf,ktf, its,ite, kts,kte  &
-                        ,ierr,ktop,edto                                           &
+                        ,ierr,ktop,edto,cumulus                                   &
                         ,po_cup,hco,heo,heo_cup,hcdo,qo,qco,qrco,qrcdo,qo_cup     &
                         ,qcdo,pwo,pwdo,p_liq_ice,melting,dbydo                    &
                         ,us,vs,uc,vc,u_cup,v_cup,ucd,vcd                          &
@@ -7974,7 +7976,7 @@ module module_cu_gf_monan
                         ,subten_H, subten_Q, subten_T, subten_U, subten_V         )
 
       implicit none
-      
+      character *(*)  ,intent (in) :: cumulus
       integer  ,intent (in )                 :: itf,ktf, its,ite, kts,kte
       integer  ,intent (in )                 :: vert_discr,use_fct
       integer  ,intent (in ), dimension(:)   :: ierr,ktop
@@ -8394,7 +8396,7 @@ module module_cu_gf_monan
       !-- formulation for the subsidence tendency
       !-- del X / del t = detr_up zu_up (X_c_up - X_env) +  detr_dn zu_dn (X_c_dn - X_env) + zu_env * del X_env / del z
       !-- subten = zu_env * del X_env / del z
-      if( use_sub3d > 0) then
+      if( use_sub3d > 0 .and. trim(cumulus) == 'deep') then
           do vtp_index = get_num_elements(vec_ok),1,-1
              i = get_data_value(vec_ok,vtp_index)
              !
@@ -8474,7 +8476,6 @@ module module_cu_gf_monan
                                    
       implicit none
       character*(*), intent (in)               :: cumulus
-
       integer  ,intent (in )                   :: itf,ktf, its,ite, kts,kte,nmp
       integer  ,intent (in ), dimension(:)     :: ktop
       integer  ,intent (in ), dimension(:)     :: ierr
@@ -8551,7 +8552,6 @@ module module_cu_gf_monan
                                    
       implicit none
       character*(*), intent (in)             :: cumulus
-
       integer  ,intent (in )                 :: itf,ktf, its,ite, kts,kte
       integer  ,intent (in ), dimension(:)   :: ktop
       integer  ,intent (in ), dimension(:)   :: ierr
