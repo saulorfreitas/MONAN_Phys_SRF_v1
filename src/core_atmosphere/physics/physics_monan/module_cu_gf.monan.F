@@ -220,7 +220,7 @@ module module_cu_gf_monan
    real    ::  lambau_deep        != default= 2.0 lambda parameter for deep/congestus convection momentum transp
    real    ::  lambau_shdn        != default= 2.0 lambda parameter for shallow/downdraft convection momentum transp
 
-   integer :: downdraft           != 0/1:  turn on/off downdrafts, default = 1
+   integer :: downdraft            != 0/1:  turn on/off downdrafts, default = 1
    real    ::  tau_deep            != deep      convective timescale
    real    ::  tau_mid             != congestus convective timescale
 
@@ -287,24 +287,22 @@ module module_cu_gf_monan
    
    !--- General internal controls for the diverse options in GF
 
-   logical, parameter :: melt_glac      = .true.  != turn on/off ice phase/melting
+   integer, parameter :: aeroevap  = 1       !=rainfall evaporation (1) orig  - (2) mix orig+new - (3) new
+   logical, parameter :: melt_glac = .true.  != turn on/off ice phase/melting
 
-   logical            :: first_guess_w  = .false. != use it to calculate a 1st guess of the updraft vert velocity
-
-   integer, parameter :: aeroevap = 1             !=rainfall evaporation (1) orig  - (2) mix orig+new - (3) new
-
-   logical :: ave_from_surface = .false.          != 
+   logical :: first_guess_w    = .false.     != use it to calculate a 1st guess of the updraft vert velocity
+   logical :: ave_from_surface = .false.     != 
    
-   logical :: use_inv_layers=.false. 
+   logical :: use_inv_layers   = .false. 
    !
    !--- proportionality constant to estimate pressure
    !--- gradient of updraft (Zhang and Wu, 2003, JAS) => REAL, PARAMETER ::    pgcon=-0.55
    real, parameter :: pgcon= 0.0
 
    !--- new entrainment formulation which uses the lateral entrainment rate as a trigger function
-   real, parameter ::  delta_ref= 30.e+3  & ! meters
-   !                   ,entr_ref = 1.2e-3     ! ref entrainment for dx = 30000 m
-                       ,entr_ref = 0.8e-3     ! ref entrainment for dx = 30000 m
+   real, parameter ::  delta_ref= 30.e+3  &   ! meters
+   !                  ,entr_ref = 1.2e-3     ! ref entrainment for dx = 30000 m
+                      ,entr_ref = 0.8e-3     ! ref entrainment for dx = 30000 m
 
    real, parameter, dimension(2) :: entr_red  = (/1.,0.333/)
    !
@@ -2455,13 +2453,13 @@ module module_cu_gf_monan
       !--- for outputs (only deep plume)
       !
       if( trim(cumulus) == 'deep') then
-        !var2d1(:) = aa1(:)
-        !var2d2(:) = aa1_bl(:)
-         ! var2d1(:) = vshear2(:)
-         !var2d1(:) = entr_rate(:)
-          var2d1(:) = bulk_wshear_factor(:)
-          var2d2(:) = E_tilde(:)
-         !var2d2(:) = x_add_buoy(:)
+         !var2d1(:) = aa1(:)
+         !var2d2(:) = aa1_bl(:)
+         !var2d1(:) = vshear2(:)
+          var2d1(:) = entr_rate(:)
+         !var2d1(:) = bulk_wshear_factor(:)
+         !var2d2(:) = E_tilde(:)
+          var2d2(:) = x_add_buoy(:)
          !if( adv_trigger == 0 .and. convection_tracer == 1) then 
          !   do i=its,itf
          !      var2d2(i) = maxval( buoy_exc(kts:ktop(i),i) )
@@ -4702,7 +4700,7 @@ module module_cu_gf_monan
          endif
       enddo
       
-      if(use_sub3d == 0 .or. trim(cumulus) == 'shallow' .or. trim(cumulus) == 'mid' ) then 
+      if(use_sub3d == 0 .and. trim(cumulus) == 'deep' ) then 
          !-apply the scale-dependence Arakawa's approach
          do vtp_index = get_num_elements(vec_ok),1,-1
            i = get_data_value(vec_ok,vtp_index)
@@ -6219,13 +6217,11 @@ module module_cu_gf_monan
          if(config_gf_sub3d > 0) then
             use_sub3d         = 1
             use_scale_dep     = 1 ! do not change this
-            !icumulus_gf(shal) = 0
-            !icumulus_gf(mid)  = 0
          endif
       endif
 
       if(icumulus_gf(mid) /= OFF) then
-       use_inv_layers = .true.
+         use_inv_layers = .true.
       endif
       
       if(mynum==local_io_node) then
@@ -7177,24 +7173,36 @@ module module_cu_gf_monan
       real     ,intent (out), dimension(:)   :: sig,sigd
 
       !-- local vars
+      real, parameter :: pow_sig = 2.
       integer :: i,k,vtp_index
+      real :: entr_rate_ref, frh_thresh, radius
       
       !- scale dependence factor for updraft
-      if( use_scale_dep == 0  .or.  cumulus == 'shallow') then
+      if( use_scale_dep == 0 .or. trim(cumulus) == 'shallow' .or. trim(cumulus) == 'mid') then
          sig(:) = 1.0
       else
-         sig(:) = 0.0    
-         do vtp_index = get_num_elements(vec_ok),1,-1
-            i = get_data_value(vec_ok,vtp_index)
-
-            !-- for similar curve as in ifs/ec, use sig_factor = 0.22
-            sig(i) = 1.0 - exp(-sig_factor*(dx(i)/1000.))
-
-            if (stochastic_sig(i) /= 1.0) then
-               sig(i) = sig(i)**(stochastic_sig(i)*max(0.9,0.9*sig(i)))
-            end if
-            sig(i)= max(0.001,min(sig(i),1.))
-         end do
+         sig(:) = 0.0
+         if(use_sub3d == 0 ) then    
+               do vtp_index = get_num_elements(vec_ok),1,-1 ; i = get_data_value(vec_ok,vtp_index)
+        
+                    !-- for similar curve as in ifs/ec, use sig_factor = 0.22
+                    sig(i) = ( 1.0 - exp(-sig_factor*(dx(i)/1000.)) ) ** pow_sig
+        
+                    if (stochastic_sig(i) /= 1.0) then
+                       sig(i) = sig(i)**(stochastic_sig(i)*max(0.9,0.9*sig(i)))
+                    end if
+                    sig(i)= max(0.001,min(sig(i),1.))
+               end do
+               !if(maxval(sig) > 0.001) print*,'sig1',maxval(dx),maxval(sig),minval(sig)
+         else
+               do vtp_index = get_num_elements(vec_ok),1,-1 ; i = get_data_value(vec_ok,vtp_index)
+                     entr_rate_ref = 1.e-4 ;  frh_thresh = 0.95
+                     radius = 0.2/entr_rate_ref
+                     sig(i) = min(frh_thresh, 3.14*radius*radius/(dx(i)*dx(i)))
+                     sig(i) = (1. - sig(i)) ** pow_sig
+               enddo
+               !if(maxval(sig) > 0.001) print*,'sig2',maxval(dx),maxval(sig),minval(sig)
+         endif
       endif
       !- scale dependence factor for downdraft
       if(downdraft == 0) then 
@@ -8637,7 +8645,7 @@ module module_cu_gf_monan
      
       use_sub3d         = 0
       use_scale_dep     = 1 
-      sig_factor        = 0.22 
+      sig_factor        = 0.3
       
       dicycle           = 2 
       cum_t_star        = (/1., -99., -99./)
