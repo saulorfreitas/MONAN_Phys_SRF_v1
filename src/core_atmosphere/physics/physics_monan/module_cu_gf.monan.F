@@ -388,6 +388,8 @@ module module_cu_gf_monan
               ,rvcuten               &
               ,rbuoyxcuten           &
               ,rcnvcfcuten           &
+              ,qc_cu                 &
+              ,qi_cu                 &
 
               ,sub3d_rthcuten        &
               ,sub3d_rqvcuten        &
@@ -465,7 +467,7 @@ module module_cu_gf_monan
                                                             ,rbotdpcu,rmfxdncu
       real,dimension(ims:ime,jms:jme)         ,intent(out):: var2d1,var2d2
 
-      real,dimension(ims:ime,kms:kme,jms:jme) ,intent(out):: rupmfxcu,rdnmfxcu
+      real,dimension(ims:ime,kms:kme,jms:jme) ,intent(out):: rupmfxcu,rdnmfxcu,qc_cu,qi_cu
       real,dimension(ims:ime,kms:kme,jms:jme) ,intent(out):: var3d1
 
       !----------------------- local and future in/out arguments
@@ -1224,20 +1226,15 @@ module module_cu_gf_monan
                !- var output for diagnostic/debug
                !var3d1   (i,k,j) = outt (k,i,shal) * fixout_qv(i) * temp2theta
 
-               !--- keep this for potential later use --------------------------------------
                !-- in updraft liq water content ( check the array config clwup5d(kts:kte,its:ite,jts:jte,maxiens) )
-               !if(present(gdc )) &
-               !  gdc (i,k,j) = (clwup5d(k,i,j,shal) + clwup5d(k,i,j,deep) + clwup5d(k,i,j,mid))*fixout_qv(i) &
-               !              * FractLiqF(temp_old(k,i))               
+               qc_cu (i,k,j) = (clwup5d(k,i,j,shal) + clwup5d(k,i,j,deep) + clwup5d(k,i,j,mid))*fixout_qv(i) &
+                             * FractLiqF(temp_old(k,i))               
                !-- in updraft ice water content
-               !if(present(gdc2)) &
-               !  gdc2(i,k,j) = (clwup5d(k,i,j,shal) + clwup5d(k,i,j,deep) + clwup5d(k,i,j,mid))*fixout_qv(i) &
-               !              * (1.0-FractLiqF(temp_old(k,i))) 
-               !-------------------------------------------------------------------------------------
-                
-
+               qi_cu (i,k,j) = (clwup5d(k,i,j,shal) + clwup5d(k,i,j,deep) + clwup5d(k,i,j,mid))*fixout_qv(i) &
+                             * (1.0-FractLiqF(temp_old(k,i)))
             enddo
          enddo
+         print*," qc_cu,qi_cu",maxval(qc_cu(its:ite,kts:kte,jts:jte)),minval(qc_cu(its:ite,kts:kte,jts:jte)),maxval(qi_cu(its:ite,kts:kte,jts:jte)),minval(qi_cu(its:ite,kts:kte,jts:jte))
          !print*,'max1 TH',maxval(rthcuten)*86400,minval(rthcuten)*86400
          !print*,'max1 QV',maxval(rqvcuten)*86400*2.5e+3,minval(rqvcuten)*86400*2.5e+3
          ! print*,'outs---',maxval(fixout_qv),maxval(conprr(:,jts))*3600,maxval(abs(outt (:,:,deep)))*86400,&

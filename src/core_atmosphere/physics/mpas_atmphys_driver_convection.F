@@ -226,6 +226,8 @@
        if(.not.allocated(rupmfxcu_p)     ) allocate(rupmfxcu_p(ims:ime,kms:kme,jms:jme) )
        if(.not.allocated(rdnmfxcu_p)     ) allocate(rdnmfxcu_p(ims:ime,kms:kme,jms:jme) )
        if(.not.allocated(v3d1_p)         ) allocate(v3d1_p    (ims:ime,kms:kme,jms:jme) )
+       if(.not.allocated(qccu_p)         ) allocate(qccu_p(ims:ime,kms:kme,jms:jme)     )
+       if(.not.allocated(qicu_p)         ) allocate(qicu_p(ims:ime,kms:kme,jms:jme)     )
  
 
        do i = its,ite
@@ -239,6 +241,9 @@
           elpbl_p(i,k,j)       = 0._RKIND
           rupmfxcu_p(i,k,j)    = 0._RKIND
           rdnmfxcu_p(i,k,j)    = 0._RKIND
+          qccu_p(i,k,j)        = 0._RKIND
+          qicu_p(i,k,j)        = 0._RKIND
+
        enddo
        enddo
        enddo
@@ -528,6 +533,8 @@
        if(allocated(sub3d_rqvcuten_p)) deallocate(sub3d_rqvcuten_p)
        if(allocated(sub3d_rucuten_p) ) deallocate(sub3d_rucuten_p )
        if(allocated(sub3d_rvcuten_p) ) deallocate(sub3d_rvcuten_p )
+       if(allocated(qccu_p)          ) deallocate(qccu_p          )
+       if(allocated(qicu_p)          ) deallocate(qicu_p          )
 
     case ("cu_kain_fritsch")
        if(allocated(dx_p)         ) deallocate(dx_p         )
@@ -739,6 +746,7 @@
              rqccuten        = rqccuten_p             , rqicuten      = rqicuten_p      , &
              rucuten         = rucuten_p              , rvcuten       = rvcuten_p       , &
              rbuoyxcuten     = rbuoyxcuten_p          , rcnvcfcuten   = rcnvcfcuten_p   , &
+             qc_cu           = qccu_p                 , qi_cu         = qicu_p          , &
 
              sub3d_rthcuten  = sub3d_rthcuten_p       , sub3d_rqvcuten= sub3d_rqvcuten_p, &
              sub3d_rucuten   = sub3d_rucuten_p        , sub3d_rvcuten = sub3d_rvcuten_p , &
@@ -999,6 +1007,8 @@
          call mpas_pool_get_array(diag_physics,'dp_ierr'    ,dp_ierr )
          call mpas_pool_get_array(diag_physics,'sh_ierr'    ,sh_ierr )
          call mpas_pool_get_array(diag_physics,'cg_ierr'    ,cg_ierr )
+         call mpas_pool_get_array(diag_physics,'qc_cu'        ,qc_cu )
+         call mpas_pool_get_array(diag_physics,'qi_cu'        ,qi_cu )
 
 
          call mpas_pool_get_array(diag_physics,'sigma_deep' ,sigma_deep)
@@ -1012,6 +1022,7 @@
          call mpas_pool_get_array(tend_physics,'rcnvcfcuten',rcnvcfcuten)
          call mpas_pool_get_array(tend_physics,'rbuoyxcuten',rbuoyxcuten)
 
+ 
          do j = jts,jte
          do i = its,ite
             dx_p(i,j) = len_disp / meshDensity(i)**0.25
@@ -1038,7 +1049,8 @@
             sigma_deep_p(i,j)    = sigma_deep(i)
 
             do k = kts,kte
- 
+               qccu_p(i,k,j)        = qc_cu(k,i)
+               qicu_p(i,k,j)        = qi_cu(k,i)
                rthblten_p(i,k,j)    = rthblten(k,i)
                rthdynten_p(i,k,j)   = rthdynten(k,i)
                rthratenlw_p(i,k,j)  = rthratenlw(k,i) 
@@ -1047,7 +1059,6 @@
                rqvdynten_p(i,k,j)   = rqvdynten(k,i)
                rbuoyxcuten_p(i,k,j) = 0.0
                rcnvcfcuten_p(i,k,j) = 0.0
-              
             enddo
          enddo
          enddo
