@@ -294,6 +294,8 @@ module module_cu_gf_monan
    logical :: ave_from_surface = .false.     != 
    
    logical :: use_inv_layers   = .false. 
+   
+   logical :: direct_coupl_conv_rad = .true. 
    !
    !--- proportionality constant to estimate pressure
    !--- gradient of updraft (Zhang and Wu, 2003, JAS) => REAL, PARAMETER ::    pgcon=-0.55
@@ -559,7 +561,8 @@ module module_cu_gf_monan
       integer :: jlx,kk,plume,ii_plume, l_unit,irec,rec_size,iloc,kloc
       character(len=6)  :: c_itimestep
       character(len=128) :: outname
-      logical :: debug_mpas 
+      logical :: debug_mpas
+      real :: adp,amd,ash
       !print*,'================================================================'
       !print*,'itimestep',itimestep
       !print*,'mpas qv', maxval(abs(rqvcuten(its:ite,kts:kte,jts:jte))),mynum
@@ -1225,16 +1228,25 @@ module module_cu_gf_monan
                
                !- var output for diagnostic/debug
                !var3d1   (i,k,j) = outt (k,i,shal) * fixout_qv(i) * temp2theta
-
-               !-- in updraft liq water content ( check the array config clwup5d(kts:kte,its:ite,jts:jte,maxiens) )
-               qc_cu (i,k,j) = (clwup5d(k,i,j,shal) + clwup5d(k,i,j,deep) + clwup5d(k,i,j,mid))*fixout_qv(i) &
-                             * FractLiqF(temp_old(k,i))               
-               !-- in updraft ice water content
-               qi_cu (i,k,j) = (clwup5d(k,i,j,shal) + clwup5d(k,i,j,deep) + clwup5d(k,i,j,mid))*fixout_qv(i) &
-                             * (1.0-FractLiqF(temp_old(k,i)))
             enddo
          enddo
-         print*," qc_cu,qi_cu",maxval(qc_cu(its:ite,kts:kte,jts:jte)),minval(qc_cu(its:ite,kts:kte,jts:jte)),maxval(qi_cu(its:ite,kts:kte,jts:jte)),minval(qi_cu(its:ite,kts:kte,jts:jte))
+
+         if(direct_coupl_conv_rad) then
+            do i = its,itf
+               if(do_this_column(i,j) == 0) cycle
+               do k = kts,kte
+                  adp = clwup5d(k,i,j,deep)*conv_cld_fr5d(k,i,j,deep)
+                  amd = clwup5d(k,i,j,mid )*conv_cld_fr5d(k,i,j,mid )
+                  ash = clwup5d(k,i,j,shal)*conv_cld_fr5d(k,i,j,shal)
+                  !-- in updraft liq water content ( check the array config clwup5d(kts:kte,its:ite,jts:jte,maxiens) )
+                  qc_cu (i,k,j) = (adp + amd + ash) * fixout_qv(i) * FractLiqF(temp_old(k,i))               
+                  !-- in updraft ice water content
+                  qi_cu (i,k,j) = (adp + amd + ash) * fixout_qv(i) * (1.0-FractLiqF(temp_old(k,i)))
+                enddo
+            enddo
+         endif
+
+         !print*," qc_cu,qi_cu",maxval(qc_cu(its:ite,kts:kte,jts:jte)),minval(qc_cu(its:ite,kts:kte,jts:jte)),maxval(qi_cu(its:ite,kts:kte,jts:jte)),minval(qi_cu(its:ite,kts:kte,jts:jte))
          !print*,'max1 TH',maxval(rthcuten)*86400,minval(rthcuten)*86400
          !print*,'max1 QV',maxval(rqvcuten)*86400*2.5e+3,minval(rqvcuten)*86400*2.5e+3
          ! print*,'outs---',maxval(fixout_qv),maxval(conprr(:,jts))*3600,maxval(abs(outt (:,:,deep)))*86400,&
@@ -2441,6 +2453,7 @@ module module_cu_gf_monan
             tup   (k,i) = tempco(k,i) !in-updraft temp
             cupclw(k,i) = qrco  (k,i) !in-updraft condensed water
             clfrac(k,i) = (xmb(i)/sig(i)) * zuo(k,i) / (rho(k,i)*vvel2d(k,i)) !in-updradt cloud fraction
+            clfrac(k,i) = min(1., max(clfrac(k,i),0.05))
          end do
          tup (kte,i) = t_cup(kte,i)
       end do

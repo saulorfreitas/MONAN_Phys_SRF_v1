@@ -1371,7 +1371,8 @@
        call mpas_pool_get_array(tend_physics,'rvcuten'     ,rvcuten    )
        call mpas_pool_get_array(tend_physics,'rbuoyxcuten' ,rbuoyxcuten)
        call mpas_pool_get_array(tend_physics,'rcnvcfcuten' ,rcnvcfcuten)
-
+       call mpas_pool_get_array(diag_physics,'qc_cu'   ,qc_cu          )
+       call mpas_pool_get_array(diag_physics,'qi_cu'   ,qi_cu          )
 
        do j = jts,jte
        do i = its,ite
@@ -1382,7 +1383,9 @@
              rcnvcfcuten(k,i)  = rcnvcfcuten_p(i,k,j)
              rupmfxcu(k,i)     = rupmfxcu_p(i,k,j)
              rdnmfxcu(k,i)     = rdnmfxcu_p(i,k,j)
-         enddo
+             qc_cu(k,i)        = qccu_p(i,k,j)
+             qi_cu(k,i)        = qicu_p(i,k,j)
+          enddo
        enddo
        enddo
        !- 2-d

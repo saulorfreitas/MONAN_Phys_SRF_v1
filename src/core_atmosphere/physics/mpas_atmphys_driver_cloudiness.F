@@ -118,7 +118,7 @@
  real(kind=RKIND),dimension(:),pointer:: areaCell,meshDensity
  real(kind=RKIND),dimension(:),pointer:: xland
  real(kind=RKIND),dimension(:,:),pointer:: zgrid
- real(kind=RKIND),dimension(:,:),pointer:: rupmfxcu
+ real(kind=RKIND),dimension(:,:),pointer:: rupmfxcu,qc_cu,qi_cu
  character(len=StrKIND),pointer:: radt_cld_scheme
  character(len=StrKIND),pointer:: config_convection_scheme
 
@@ -155,25 +155,31 @@
  call mpas_pool_get_config(configs,'config_radt_cld_scheme',radt_cld_scheme)
  cld_fraction_select: select case (trim(radt_cld_scheme))
      case("cld_fraction_monan")
-       call mpas_pool_get_array(diag_physics,'kpbl'    ,kpbl      )
-       call mpas_pool_get_array(mesh,'zgrid'           ,zgrid     )
+       call mpas_pool_get_array(diag_physics,'kpbl'    ,kpbl   )
+       call mpas_pool_get_array(mesh,'zgrid'           ,zgrid  )
+
        do j = jts,jte
           do i = its,ite
              kpbl_p(i,j)  = kpbl(i)
           enddo
           do k = kts,kte
           do i = its,ite
-             zgrid_p(i,k,j)     = zgrid(k,i)
+             zgrid_p(i,k,j) = zgrid(k,i)
           enddo
           enddo
        enddo
        call mpas_pool_get_config(configs, 'config_convection_scheme', config_convection_scheme)
        if(trim(config_convection_scheme) == 'cu_gf_monan') then
-              call mpas_pool_get_array(diag_physics,'rupmfxcu',rupmfxcu  )
+              call mpas_pool_get_array(diag_physics,'rupmfxcu',rupmfxcu)
+              call mpas_pool_get_array(diag_physics,'qc_cu'   ,qc_cu   )
+              call mpas_pool_get_array(diag_physics,'qi_cu'   ,qi_cu   )
+
               do j = jts,jte
               do k = kts,kte
               do i = its,ite
-                 rupmfxcu_p(i,k,j)  = rupmfxcu(k,i)
+                 rupmfxcu_p(i,k,j) = rupmfxcu(k,i)
+                 qcrad_p(i,k,j)    =    qc_cu(k,i) + qcrad_p(i,k,j)
+                 qirad_p(i,k,j)    =    qi_cu(k,i) + qirad_p(i,k,j)
               enddo
               enddo
               enddo
@@ -181,7 +187,7 @@
               do j = jts,jte
               do k = kts,kte
               do i = its,ite
-                 rupmfxcu_p(i,k,j)  = 0.0_RKIND
+                 rupmfxcu_p(i,k,j) = 0.0_RKIND
               enddo
               enddo
               enddo  
@@ -214,7 +220,6 @@
  do k = kts,kte
  do i = its,ite
     cldfrac(k,i) = cldfrac_p(i,k,j)
-    !write(77,*) "LFR-DBG: k,iCell,cldFrac ",k,i,cldfrac(k,i)
  enddo
  enddo
  enddo
