@@ -173,13 +173,17 @@
               call mpas_pool_get_array(diag_physics,'rupmfxcu',rupmfxcu)
               call mpas_pool_get_array(diag_physics,'qc_cu'   ,qc_cu   )
               call mpas_pool_get_array(diag_physics,'qi_cu'   ,qi_cu   )
+              !print*," qc_cu,qi_cu",maxval(qc_cu(its:ite,kts:kte)),minval(qc_cu(its:ite,kts:kte)), & 
+              !                      maxval(qi_cu(its:ite,kts:kte)),minval(qi_cu(its:ite,kts:kte))
 
               do j = jts,jte
               do k = kts,kte
               do i = its,ite
                  rupmfxcu_p(i,k,j) = rupmfxcu(k,i)
                  qcrad_p(i,k,j)    =    qc_cu(k,i) + qcrad_p(i,k,j)
-                 qirad_p(i,k,j)    =    qi_cu(k,i) + qirad_p(i,k,j)
+                 !split ice & snow 50-50%
+                 qirad_p(i,k,j)    =    qi_cu(k,i)*0.5_RKIND + qirad_p(i,k,j)
+                 qsrad_p(i,k,j)    =    qi_cu(k,i)*0.5_RKIND + qsrad_p(i,k,j)
               enddo
               enddo
               enddo

@@ -295,7 +295,9 @@ module module_cu_gf_monan
    
    logical :: use_inv_layers   = .false. 
    
-   logical :: direct_coupl_conv_rad = .true. 
+   logical :: direct_coupl_conv_rad = .false.
+   real, parameter, dimension(maxiens) :: cum_min_up_cld_frc = (/0.05,  0.15,  0.10/) ! deep, shallow, congestus
+   real :: min_up_cld_frc
    !
    !--- proportionality constant to estimate pressure
    !--- gradient of updraft (Zhang and Wu, 2003, JAS) => REAL, PARAMETER ::    pgcon=-0.55
@@ -996,7 +998,7 @@ module module_cu_gf_monan
             ave_layer      =  cum_ave_layer      (plume)
             T_star         =  cum_t_star         (plume)
             fr_min_entr    =  cum_fr_min_entr    (plume)
-
+            min_up_cld_frc =  cum_min_up_cld_frc (plume)
             !
             !-- set the temp and water vapor anomalies from the sub-grid scale variability 
             call set_Tq_pertub (use_excess,its,ite,itf,xlandi,ztexec,zqexec,cum_ztexec,cum_zqexec)
@@ -1238,7 +1240,7 @@ module module_cu_gf_monan
                   adp = clwup5d(k,i,j,deep)*conv_cld_fr5d(k,i,j,deep)
                   amd = clwup5d(k,i,j,mid )*conv_cld_fr5d(k,i,j,mid )
                   ash = clwup5d(k,i,j,shal)*conv_cld_fr5d(k,i,j,shal)
-                  !-- in updraft liq water content ( check the array config clwup5d(kts:kte,its:ite,jts:jte,maxiens) )
+                  !-- in updraft liq water content
                   qc_cu (i,k,j) = (adp + amd + ash) * fixout_qv(i) * FractLiqF(temp_old(k,i))               
                   !-- in updraft ice water content
                   qi_cu (i,k,j) = (adp + amd + ash) * fixout_qv(i) * (1.0-FractLiqF(temp_old(k,i)))
@@ -2445,19 +2447,20 @@ module module_cu_gf_monan
       ! 
       !-- miscelaneous procedures for output and/or debug
       !
-      !--- for tracer convective transport / outputs
+      !--- for tracer convective transport / radiation coupling / outputs
       !
-      do vtp_index = get_num_elements(vec_ok),1,-1
-         i = get_data_value(vec_ok,vtp_index)
-         do k=kts,ktf
-            tup   (k,i) = tempco(k,i) !in-updraft temp
-            cupclw(k,i) = qrco  (k,i) !in-updraft condensed water
-            clfrac(k,i) = (xmb(i)/sig(i)) * zuo(k,i) / (rho(k,i)*vvel2d(k,i)) !in-updradt cloud fraction
-            clfrac(k,i) = min(1., max(clfrac(k,i),0.05))
+      if(direct_coupl_conv_rad) then
+         do vtp_index = get_num_elements(vec_ok),1,-1
+            i = get_data_value(vec_ok,vtp_index)
+            do k=kts,ktf
+               tup   (k,i) = tempco(k,i) !in-updraft temp
+               cupclw(k,i) = qrco  (k,i) !in-updraft condensed water
+               clfrac(k,i) = xmb(i) * zuo(k,i) / (rho(k,i)*vvel2d(k,i)) ! updradt cloud fraction
+               clfrac(k,i) = min(1., max(clfrac(k,i),min_up_cld_frc))
+            end do
+            tup (kte,i) = t_cup(kte,i)
          end do
-         tup (kte,i) = t_cup(kte,i)
-      end do
-
+      endif
       !--- for outputs (only deep plume)
       !
       if( trim(cumulus) == 'deep') then
@@ -9901,7 +9904,8 @@ module module_cu_gf_monan
           real    ,dimension (shall_closures)  :: xff_shal
           !-- tuning numbers for the TKE-based closure for shallow convection   
           real,parameter :: p_k1 = 1.2, p_cloud_area = 0.10
-          
+         !real,parameter :: p_k1 = 1.6, p_cloud_area = 0.15
+
           !-- for mid
           real             :: KE_gf,W_cb
           real, parameter  :: c1 = 0.06, c2 = 1., c3 = 0.28,  c4 = 0.0 !0.64 
@@ -10624,7 +10628,7 @@ module module_cu_gf_monan
             if (cupout(nvar)%varn(1) .ne. "xxxx") then
                do jk = 1, klevgrads(nvar)
                   nrec = nrec + 1
-                  !write(19)          real((cupout(nvar)%varp(:,jk)),4)
+               !write(19)          real((cupout(nvar)%varp(:,jk)),4)
                   write (19, rec=nrec) real((cupout(nvar)%varp(:, jk)), 4)
                end do
             end if
