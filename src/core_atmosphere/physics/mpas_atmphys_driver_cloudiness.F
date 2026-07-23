@@ -121,6 +121,8 @@
  real(kind=RKIND),dimension(:,:),pointer:: rupmfxcu,qc_cu,qi_cu
  character(len=StrKIND),pointer:: radt_cld_scheme
  character(len=StrKIND),pointer:: config_convection_scheme
+ character(len=StrKIND),pointer:: pbl_scheme
+ real(kind=RKIND),dimension(:,:),pointer:: cldfrac_bl,qc_bl,qi_bl
 
 !-----------------------------------------------------------------------------------------------------------------
 
@@ -151,6 +153,24 @@
     enddo
     enddo
  enddo
+ 
+ call mpas_pool_get_config(configs,'config_pbl_scheme',pbl_scheme)
+ pbl_select: select case (trim(pbl_scheme))
+   case("bl_mynn")
+     call mpas_pool_get_array(diag_physics,'cldfrac_bl',cldfrac_bl)
+     call mpas_pool_get_array(diag_physics,'qc_bl'     ,qc_bl     )
+     call mpas_pool_get_array(diag_physics,'qi_bl'     ,qi_bl     )
+     do j = jts,jte
+     do k = kts,kte
+     do i = its,ite
+       qcrad_p(i,k,j) =  qcrad_p(i,k,j) +             qc_bl(k,i) * cldfrac_bl(k,i)
+       qirad_p(i,k,j) =  qirad_p(i,k,j) + 0.5_RKIND * qi_bl(k,i) * cldfrac_bl(k,i)
+       qsrad_p(i,k,j) =  qsrad_p(i,k,j) + 0.5_RKIND * qi_bl(k,i) * cldfrac_bl(k,i)
+     enddo
+     enddo
+     enddo
+   case default
+ end select pbl_select
 
  call mpas_pool_get_config(configs,'config_radt_cld_scheme',radt_cld_scheme)
  cld_fraction_select: select case (trim(radt_cld_scheme))
