@@ -56,7 +56,9 @@
 ! * this is a bug fix. dx_p is converted from meters to kilometers prior to calling the thompson parameterization
 !   of the cloud fraction.
 !   Laura D. Fowler (laura@ucar.edu) / 2024-03-23.
-
+!
+! * coupling with boundary layer (MYNN) and convective (Grell-Freitas) clouds.
+!   Saulo Freitas / 23-Jul-2026
 
  contains
 
@@ -163,9 +165,9 @@
      do j = jts,jte
      do k = kts,kte
      do i = its,ite
-       qcrad_p(i,k,j) =  qcrad_p(i,k,j) +             qc_bl(k,i) * cldfrac_bl(k,i)
-       qirad_p(i,k,j) =  qirad_p(i,k,j) + 0.5_RKIND * qi_bl(k,i) * cldfrac_bl(k,i)
-       qsrad_p(i,k,j) =  qsrad_p(i,k,j) + 0.5_RKIND * qi_bl(k,i) * cldfrac_bl(k,i)
+       qcrad_p(i,k,j) = qcrad_p(i,k,j) +             qc_bl(k,i) * cldfrac_bl(k,i)
+       qirad_p(i,k,j) = qirad_p(i,k,j) + 0.5_RKIND * qi_bl(k,i) * cldfrac_bl(k,i)
+       qsrad_p(i,k,j) = qsrad_p(i,k,j) + 0.5_RKIND * qi_bl(k,i) * cldfrac_bl(k,i)
      enddo
      enddo
      enddo
@@ -193,9 +195,6 @@
               call mpas_pool_get_array(diag_physics,'rupmfxcu',rupmfxcu)
               call mpas_pool_get_array(diag_physics,'qc_cu'   ,qc_cu   )
               call mpas_pool_get_array(diag_physics,'qi_cu'   ,qi_cu   )
-              !print*," qc_cu,qi_cu",maxval(qc_cu(its:ite,kts:kte)),minval(qc_cu(its:ite,kts:kte)), & 
-              !                      maxval(qi_cu(its:ite,kts:kte)),minval(qi_cu(its:ite,kts:kte))
-
               do j = jts,jte
               do k = kts,kte
               do i = its,ite

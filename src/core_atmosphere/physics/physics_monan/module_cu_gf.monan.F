@@ -104,7 +104,7 @@ module module_cu_gf_monan
       ,n_cldrop,use_random_num,modConvParGF_initialized,use_pass_cloudvol&
       ,use_lcl_ctrl_entr,use_rhu_ctrl_entr,cum_min_cloud_depth,use_sub3d &
       ,cum_fr_min_entr,use_shear_ctrl_entr,use_cwv_ctrl_entr,adv_trigger &
-      ,dcape_threshold,use_cold_start
+      ,dcape_threshold,use_cold_start,cum_min_up_cld_frc
 
    public makeDropletNumber,makeIceNumber,FractLiqF                      &
       ,coldPoolStart,readGFConvParNML,initModConvParGF,cu_gf_monan_driver&
@@ -296,7 +296,7 @@ module module_cu_gf_monan
    logical :: use_inv_layers   = .false. 
    
    logical :: direct_coupl_conv_rad = .false.
-   real, parameter, dimension(maxiens) :: cum_min_up_cld_frc = (/0.05,  0.15,  0.10/) ! deep, shallow, congestus
+   real, dimension(maxiens) :: cum_min_up_cld_frc ! = (/0.02,  0.07,  0.05/) ! deep, shallow, congestus
    real :: min_up_cld_frc
    !
    !--- proportionality constant to estimate pressure
@@ -2449,7 +2449,8 @@ module module_cu_gf_monan
       !
       !--- for tracer convective transport / radiation coupling / outputs
       !
-      if(direct_coupl_conv_rad) then
+      if(min_up_cld_frc > 1.e-6) then
+         direct_coupl_conv_rad = .true.
          do vtp_index = get_num_elements(vec_ok),1,-1
             i = get_data_value(vec_ok,vtp_index)
             do k=kts,ktf
@@ -6180,7 +6181,8 @@ module module_cu_gf_monan
          ,add_coldpool_clos,add_coldpool_trig,n_cldrop                            &
          ,output_sound,use_pass_cloudvol,use_lcl_ctrl_entr,use_rhu_ctrl_entr      &
          ,cum_min_cloud_depth,use_sub3d,cum_fr_min_entr,use_shear_ctrl_entr       &
-         ,use_cwv_ctrl_entr,adv_trigger,dcape_threshold,use_cold_start
+         ,use_cwv_ctrl_entr,adv_trigger,dcape_threshold,use_cold_start            &
+         ,cum_min_up_cld_frc
 
       if(present(IO_NODE)) then 
          local_io_node = IO_NODE
@@ -6246,6 +6248,7 @@ module module_cu_gf_monan
          print*, 'cum_fr_min_entr    ' , real(cum_fr_min_entr    ,4)
          print*, 'cum_min_cloud_depth' , real(cum_min_cloud_depth,4)
          print*, 'closure_choice     ' , closure_choice
+         print*, 'cum_min_up_cld_frc ' , real(cum_min_up_cld_frc ,4)
          print*, 'use_sub3d          ' , use_sub3d
          print*, 'use_scale_dep      ' , use_scale_dep
          print*, 'sig_factor         ' , real(sig_factor         ,4)
@@ -8622,13 +8625,14 @@ module module_cu_gf_monan
       endif
 
       !-- inicializa as variáveis do módulo
-      icumulus_gf      = (/1, 1, 0/)
-      closure_choice   = (/10,10, 3/) 
-      cum_entr_rate    = (/       &
+      icumulus_gf       = (/1, 1, 0/)
+      closure_choice    = (/10,10, 3/)
+      cum_entr_rate     = (/       &
                            -999.0  & !deep
                           ,13.0e-4 & !shallow
                           ,20.0e-4 & !mid
                          /)
+      cum_min_up_cld_frc= (/0.02,  0.07,  0.05/) ! deep, shallow, congestus
       use_lcl_ctrl_entr = 0
       use_pass_cloudvol = 0
       use_rhu_ctrl_entr = 0
