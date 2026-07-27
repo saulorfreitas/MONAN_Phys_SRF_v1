@@ -295,7 +295,7 @@ module module_cu_gf_monan
    
    logical :: use_inv_layers   = .false. 
    
-   logical :: direct_coupl_conv_rad = .false.
+   logical :: direct_coupl_conv_rad
    real, dimension(maxiens) :: cum_min_up_cld_frc ! = (/0.02,  0.07,  0.05/) ! deep, shallow, congestus
    real :: min_up_cld_frc
    !
@@ -2450,7 +2450,6 @@ module module_cu_gf_monan
       !--- for tracer convective transport / radiation coupling / outputs
       !
       if(min_up_cld_frc > 1.e-6) then
-         direct_coupl_conv_rad = .true.
          do vtp_index = get_num_elements(vec_ok),1,-1
             i = get_data_value(vec_ok,vtp_index)
             do k=kts,ktf
@@ -6237,6 +6236,8 @@ module module_cu_gf_monan
       if(icumulus_gf(mid) /= OFF) then
          use_inv_layers = .true.
       endif
+
+      if(maxval(cum_min_up_cld_frc) < 1.e-6) direct_coupl_conv_rad = .false.
       
       if(mynum==local_io_node) then
          !- print the namelist
@@ -6294,6 +6295,7 @@ module module_cu_gf_monan
          print*, 'use_smooth_prof    ' , use_smooth_prof
          print*, 'cum_use_smooth_tend' , cum_use_smooth_tend
          print*, 'use_random_num     ' , use_random_num
+         print*, 'overshoot          ' , real(overshoot          ,4)
 
          print*,'!---- the cloud microphysics'
          print*, 'autoconv           ' , autoconv
@@ -6319,8 +6321,8 @@ module module_cu_gf_monan
 
          print*,'!---- couplings w/ other parameterizations'
          print*, 'lightning_diag     ' , lightning_diag
-         print*, 'overshoot          ' , real(overshoot          ,4)
          print*, 'liq_ice_number_conc' , liq_ice_number_conc
+         print*, 'dire_coupl_conv_rad' , direct_coupl_conv_rad
 
          print*, '!----misc controls'
          print*, 'output_sound       ' , output_sound
@@ -8633,6 +8635,7 @@ module module_cu_gf_monan
                           ,20.0e-4 & !mid
                          /)
       cum_min_up_cld_frc= (/0.02,  0.07,  0.05/) ! deep, shallow, congestus
+      direct_coupl_conv_rad = .true.
       use_lcl_ctrl_entr = 0
       use_pass_cloudvol = 0
       use_rhu_ctrl_entr = 0
