@@ -151,12 +151,15 @@
  if(.not.allocated(rqccuten_p) ) allocate(rqccuten_p(ims:ime,kms:kme,jms:jme))
  if(.not.allocated(rqicuten_p) ) allocate(rqicuten_p(ims:ime,kms:kme,jms:jme))
  if(.not.allocated(pratec_p)   ) allocate(pratec_p(ims:ime,jms:jme)          )
+  if(.not.allocated(pratec2_p)   ) allocate(pratec2_p(ims:ime,jms:jme)          )
+
  if(.not.allocated(raincv_p)   ) allocate(raincv_p(ims:ime,jms:jme)          )
+ if(.not.allocated(raincv2_p)   ) allocate(raincv2_p(ims:ime,jms:jme)          )
 
  do i = its,ite
  do j = jts,jte
-    pratec_p(i,j) = 0._RKIND
-    raincv_p(i,j) = 0._RKIND
+    pratec_p(i,j) = 0._RKIND ; pratec2_p(i,j) = 0._RKIND 
+    raincv_p(i,j) = 0._RKIND ; raincv2_p(i,j) = 0._RKIND
  enddo
  enddo
 
@@ -445,7 +448,10 @@
  if(allocated(rqccuten_p) ) deallocate(rqccuten_p )
  if(allocated(rqicuten_p) ) deallocate(rqicuten_p )
  if(allocated(pratec_p)   ) deallocate(pratec_p   )
+ if(allocated(pratec2_p)   ) deallocate(pratec2_p   )
+
  if(allocated(raincv_p)   ) deallocate(raincv_p   )
+ if(allocated(raincv2_p)   ) deallocate(raincv2_p   )
 
  convection_select: select case(convection_scheme)
 
@@ -720,7 +726,8 @@
 
     case ("cu_gf_monan")
        call mpas_timer_start('Grell-Freitas-MONAN')
-       call cu_gf_monan_driver(                                                           &
+
+       call cu_gf_monan_driver(2,                                                           &
              dt              = dt_dyn                 , confrq        = dt_cu           , &
              dx_p            = dx_p                   , areaCell      = area_p          , &
              lats            = xlat_p                 , lons          = xlon_p          , &
@@ -740,7 +747,7 @@
              rthratenlw      = rthratenlw_p           , rthratensw    = rthratensw_p    , &
              rthdyten        = rthdynten_p            , rqvdyten      = rqvdynten_p     , &
              
-             raincv          = raincv_p               , conprr        = pratec_p        , &
+             raincv          = raincv2_p              , conprr        = pratec2_p        , &             
              lightn_dens     = lightn_dens_p          , sigma_deep    = sigma_deep_p    , &
              rthcuten        = rthcuten_p             , rqvcuten      = rqvcuten_p      , &
              rqccuten        = rqccuten_p             , rqicuten      = rqicuten_p      , &
@@ -768,6 +775,61 @@
              cg_dens         = cg_dens_p                                                 ,&                  
              dp_ierr         = dp_ierr_p              , sh_ierr       = sh_ierr_p        ,&
              cg_ierr         = cg_ierr_p                                                 )                  
+333 continue
+       call cu_gf_monan_driver(1,                                                           &
+             dt              = dt_dyn                 , confrq        = dt_cu           , &
+             dx_p            = dx_p                   , areaCell      = area_p          , &
+             lats            = xlat_p                 , lons          = xlon_p          , &
+             u               = u_p                    , v             = v_p             , &
+             w               = w_p                    , temp          = t_p             , &
+             rvap            = qv_p                   , rho           = rho_p           , &
+             press           = pres_hyd_p             , pi            = pi_p            , &
+             p8w             = pres2_hyd_p            , dz8w          = dz_p            , &
+             topt            = ht_p                   , xland         = xland_p         , &
+             sflux_t         = hfx_p                  , sflux_r       = qfx_p           , &
+             temp2m          = t2m_p                  , wlpool        = wlpool_p        , &
+             mpas_cape       = cape_p                 , mpas_cin      = cin_p           , &
+             kpbl            = kpbl_p                 , tke_pbl       = tkepbl_p        , &
+             turb_len_scale  = elpbl_p                ,                                   &
+             buoyx           = buoyx_p                , cnvcf         = cnvcf_p         , &
+             rthblten        = rthblten_p             , rqvblten      = rqvblten_p      , &
+             rthratenlw      = rthratenlw_p           , rthratensw    = rthratensw_p    , &
+             rthdyten        = rthdynten_p            , rqvdyten      = rqvdynten_p     , &
+             
+             raincv          = raincv_p              , conprr        = pratec_p       , &
+             lightn_dens     = lightn_dens_p          , sigma_deep    = sigma_deep_p    , &
+             rthcuten        = rthcuten_p             , rqvcuten      = rqvcuten_p      , &
+             rqccuten        = rqccuten_p             , rqicuten      = rqicuten_p      , &
+             rucuten         = rucuten_p              , rvcuten       = rvcuten_p       , &
+             rbuoyxcuten     = rbuoyxcuten_p          , rcnvcfcuten   = rcnvcfcuten_p   , &
+             qc_cu           = qccu_p                 , qi_cu         = qicu_p          , &
+
+             sub3d_rthcuten  = sub3d_rthcuten_p       , sub3d_rqvcuten= sub3d_rqvcuten_p, &
+             sub3d_rucuten   = sub3d_rucuten_p        , sub3d_rvcuten = sub3d_rvcuten_p , &
+
+             rupmfxcu        = rupmfxcu_p             , rdnmfxcu      = rdnmfxcu_p      , &
+             
+             rmfxdpcu        = rmfxdpcu_p             , rmfxdncu      = rmfxdncu_p      , &
+             rmfxmdcu        = rmfxmdcu_p                                               , &
+             rmfxshcu        = rmfxshcu_p             , rtopdpcu      = rtopdpcu_p      , &
+             rtopmdcu        = rtopmdcu_p             , rtopshcu      = rtopshcu_p      , &
+             rbotdpcu        = rbotdpcu_p                                               , &
+             var2d1          = v2d1_p                 , var2d2        = v2d2_p          , &
+             var3d1          = v3d1_p                                                   , &
+             ids = ids , ide = ide , jds = jds , jde = jde , kds = kds , kde = kde      , &
+             ims = ims , ime = ime , jms = jms , jme = jme , kms = kds , kme = kme      , &
+             its = its , ite = ite , jts = jts , jte = jte , kts = kts , kte = kte      , &
+             itimestep       = itimestep              , mynum         = dminfo%my_proc_id,&
+             dp_dens         = dp_dens_p              , sh_dens       = sh_dens_p        ,&
+             cg_dens         = cg_dens_p                                                 ,&                  
+             dp_ierr         = dp_ierr_p              , sh_ierr       = sh_ierr_p        ,&
+             cg_ierr         = cg_ierr_p                                                 )                  
+
+
+
+
+
+
 
        call mpas_timer_stop('Grell-Freitas-MONAN')
 
@@ -933,7 +995,7 @@
  character(len=StrKIND),pointer:: convection_scheme,config_pbl_scheme
  integer,dimension(:),pointer:: kpbl,k22_shallow,kbcon_shallow,ktop_shallow,ktop_deep
  real(kind=RKIND),dimension(:),pointer  :: areaCell,meshDensity
- real(kind=RKIND),dimension(:),pointer  :: nca,cubot,cutop,cuprec,raincv,wlpool,lightn_dens,sigma_deep
+ real(kind=RKIND),dimension(:),pointer  :: nca,cubot,cutop,cuprec,raincv,wlpool,lightn_dens,sigma_deep,raincv2,cuprec2
  real(kind=RKIND),dimension(:),pointer  :: dp_dens,sh_dens,cg_dens
  real(kind=RKIND),dimension(:),pointer  :: dp_ierr,sh_ierr,cg_ierr
  real(kind=RKIND),dimension(:),pointer  :: gsw,hfx,qfx,xland,t2m,cape,cin
@@ -959,7 +1021,9 @@
 
  if(trim(convection_scheme) /= "cu_gf_monan") then 
  call mpas_pool_get_array(diag_physics,'cuprec',cuprec)
+ call mpas_pool_get_array(diag_physics,'cuprec2',cuprec2)
  call mpas_pool_get_array(diag_physics,'raincv',raincv)
+ call mpas_pool_get_array(diag_physics,'raincv2',raincv2)
 
  call mpas_pool_get_array(tend_physics,'rthcuten',rthcuten)
  call mpas_pool_get_array(tend_physics,'rqvcuten',rqvcuten)
@@ -968,8 +1032,8 @@
 
  do j = jts,jte
  do i = its,ite
-    raincv_p(i,j) = raincv(i)
-    pratec_p(i,j) = cuprec(i)
+    raincv_p(i,j) = raincv(i) ; raincv2_p(i,j) = raincv2(i)
+    pratec_p(i,j) = cuprec(i) ; pratec2_p(i,j) = cuprec2(i)
     do k = kts,kte
        rthcuten_p(i,k,j) = rthcuten(k,i)
        rqvcuten_p(i,k,j) = rqvcuten(k,i)
@@ -1295,7 +1359,7 @@
 !local pointers:
  character(len=StrKIND),pointer:: convection_scheme
  integer,dimension(:),pointer:: k22_shallow,kbcon_shallow,ktop_shallow,ktop_deep
- real(kind=RKIND),dimension(:),pointer  :: nca,cubot,cutop,cuprec,raincv,lightn_dens,sigma_deep
+ real(kind=RKIND),dimension(:),pointer  :: nca,cubot,cutop,cuprec,raincv,lightn_dens,sigma_deep,raincv2,cuprec2
  real(kind=RKIND),dimension(:),pointer  :: dp_dens,sh_dens,cg_dens
  real(kind=RKIND),dimension(:),pointer  :: dp_ierr,sh_ierr,cg_ierr
  real(kind=RKIND),dimension(:),pointer  :: xmb_total,xmb_shallow
@@ -1321,8 +1385,11 @@
 
  call mpas_pool_get_config(configs,'config_convection_scheme',convection_scheme)
 
+
  call mpas_pool_get_array(diag_physics,'cuprec',cuprec)
  call mpas_pool_get_array(diag_physics,'raincv',raincv)
+ call mpas_pool_get_array(diag_physics,'cuprec2',cuprec2)
+ call mpas_pool_get_array(diag_physics,'raincv2',raincv2)
 
  call mpas_pool_get_array(tend_physics,'rthcuten',rthcuten)
  call mpas_pool_get_array(tend_physics,'rqvcuten',rqvcuten)
@@ -1331,8 +1398,8 @@
 
  do j = jts,jte
  do i = its,ite
-    raincv(i) = raincv_p(i,j)
-    cuprec(i) = pratec_p(i,j)
+    raincv(i) = raincv_p(i,j) ; raincv2(i) = raincv2_p(i,j)
+    cuprec(i) = pratec_p(i,j) ; cuprec2(i) = pratec2_p(i,j)
     do k = kts, kte
        rthcuten(k,i) = rthcuten_p(i,k,j)
        rqvcuten(k,i) = rqvcuten_p(i,k,j)
@@ -1505,7 +1572,10 @@
                   if(factor_lbc>1. .or. factor_lbc <0.) stop 'factor LBC'
                   !-- 1d var
                   raincv(i)      = raincv(i)      * factor_lbc
+                  raincv2(i)     = raincv2(i)      * factor_lbc
+
                   cuprec(i)      = cuprec(i)      * factor_lbc
+                  cuprec2(i)      = cuprec2(i)      * factor_lbc
                   rmfxdpcu(i)    = rmfxdpcu(i)    * factor_lbc
                   rmfxdncu(i)    = rmfxdncu(i)    * factor_lbc
                   rmfxmdcu(i)    = rmfxmdcu(i)    * factor_lbc
@@ -1621,7 +1691,7 @@
 
 !local pointers:
  character(len=StrKIND),pointer:: convection_scheme
- real(kind=RKIND),dimension(:),pointer  :: nca,cubot,cutop,cuprec,raincv
+ real(kind=RKIND),dimension(:),pointer  :: nca,cubot,cutop,cuprec,raincv,raincv2,cuprec2
  real(kind=RKIND),dimension(:,:),pointer:: rthcuten,rqvcuten,rqccuten,rqicuten,rqrcuten,rqscuten
 
 !local variables and arrays:
@@ -1638,6 +1708,7 @@
       call mpas_pool_get_array(diag_physics,'cubot' ,cubot )
       call mpas_pool_get_array(diag_physics,'cutop' ,cutop )
       call mpas_pool_get_array(diag_physics,'cuprec',cuprec)
+
       call mpas_pool_get_array(diag_physics,'raincv',raincv)
 
       call mpas_pool_get_array(tend_physics,'rthcuten',rthcuten)
@@ -1700,13 +1771,13 @@
 !local pointers:
  integer,pointer:: index_cnvcf, index_buoyx
  integer,pointer:: config_gf_cporg, config_gf_pcvol
- integer,dimension(:),pointer:: i_rainc
+ integer,dimension(:),pointer:: i_rainc,i_rainc2
  integer,pointer:: nEdgesSolve,nCells,nCellsSolve,nEdges
 
 !local pointers:
  character(len=StrKIND),pointer:: convection_scheme
  real(kind=RKIND),pointer:: bucket_rainc
- real(kind=RKIND),dimension(:),pointer:: cuprec,rainc,lightn_dens,acc_lightn_dens
+ real(kind=RKIND),dimension(:),pointer:: cuprec,rainc,lightn_dens,acc_lightn_dens,rainc2,cuprec2
  real(kind=RKIND),dimension(:),pointer:: xland
  real(kind=RKIND),dimension(:),pointer:: wlpool,vcpool,u_gustfront,v_gustfront
  real(kind=RKIND),dimension(:),pointer:: dp_dens,sh_dens,cg_dens
@@ -1741,17 +1812,26 @@
  call mpas_pool_get_config(configs,'config_bucket_rainc',bucket_rainc)
 
  call mpas_pool_get_array(diag_physics,'i_rainc',i_rainc)
+ call mpas_pool_get_array(diag_physics,'i_rainc2',i_rainc2)
+
  call mpas_pool_get_array(diag_physics,'cuprec' ,cuprec )
+ call mpas_pool_get_array(diag_physics,'cuprec2' ,cuprec2 )
+
  call mpas_pool_get_array(diag_physics,'rainc'  ,rainc  )
+ call mpas_pool_get_array(diag_physics,'rainc2'  ,rainc2  )
 
 !update the accumulated precipitation at the end of each dynamic time-step:
  do i = its, ite
     rainc(i) = rainc(i) + cuprec(i) * dt_dyn
+    rainc2(i) = rainc2(i) + cuprec2(i) * dt_dyn
 
     if(l_acrain .and. bucket_rainc.gt.0._RKIND .and. &
        rainc(i).gt.bucket_rainc) then
        i_rainc(i) = i_rainc(i) + 1
        rainc(i)   = rainc(i) - bucket_rainc
+       i_rainc2(i) = i_rainc2(i) + 1
+       rainc2(i)   = rainc2(i) - bucket_rainc
+
     endif
  enddo
  !CR: negative rainc values correction:

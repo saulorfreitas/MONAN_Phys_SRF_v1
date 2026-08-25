@@ -298,8 +298,11 @@
     cu_act_flag
  real(kind=RKIND),dimension(:,:),allocatable::   &
     rainc_p,          &!
+    rainc2_p,         &!
+    raincv2_p,        &!
     raincv_p,         &!
-    pratec_p           !
+    pratec_p,         & 
+    pratec2_p          !
 
  real(kind=RKIND),dimension(:,:,:),allocatable:: &
     rthcuten_p,       &!

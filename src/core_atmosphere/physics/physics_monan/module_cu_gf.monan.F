@@ -146,6 +146,7 @@ module module_cu_gf_monan
                                                 !,1.3e-3  & !shallow
                                                 !,2.0e-3  & !mid
                                                 !/)
+   integer:: ixxx
    integer, parameter :: opt  = 1                                              
 
    integer :: use_lcl_ctrl_entr != 0/1     - default 0
@@ -295,7 +296,7 @@ module module_cu_gf_monan
    
    logical :: use_inv_layers   = .false. 
    
-   logical :: direct_coupl_conv_rad
+   logical :: direct_coupl_conv_rad = .false.
    real, dimension(maxiens) :: cum_min_up_cld_frc ! = (/0.02,  0.07,  0.05/) ! deep, shallow, congestus
    real :: min_up_cld_frc
    !
@@ -339,11 +340,13 @@ module module_cu_gf_monan
 
    logical :: modConvParGF_initialized
 
+   integer,save :: convection_tracer_save = 1
+
    contains
    !---------------------------------------------------------------------------------------------------
    !--- monan driver 
    !---------------------------------------------------------------------------------------------------
-   subroutine cu_gf_monan_driver(    &
+   subroutine cu_gf_monan_driver(irain,    &
                dt                    &
               ,confrq                &
               ,dx_p                  &
@@ -439,7 +442,7 @@ module module_cu_gf_monan
       integer                                 ,intent(in):: ids,ide,jds,jde,kds,kde & 
                                                            ,ims,ime,jms,jme,kms,kme & 
                                                            ,its,ite,jts,jte,kts,kte &
-                                                           ,itimestep, mynum
+                                                           ,itimestep, mynum, irain
       integer, dimension(ims:ime,jms:jme)     ,intent(in):: kpbl
 
       real                                    ,intent(in):: dt, confrq
@@ -575,7 +578,10 @@ module module_cu_gf_monan
       !print*,'mpas u ', maxval(abs(rucuten(its:ite,kts:kte,jts:jte))),mynum
       !print*,'mpas v ', maxval(abs(rvcuten(its:ite,kts:kte,jts:jte))),mynum
       !print*,'================================================================'
-
+      
+      ixxx=irain
+      print*,'IRAIN=',ixxx,cum_t_star(2)     
+      
       !--- these arrays must be reset every timestep.
          ierr4d         = 0      
          jmin4d         = kts
@@ -1198,6 +1204,8 @@ module module_cu_gf_monan
             !print*,'prec',i,conprr(i,j)*3600,fixout_qv(i)
          enddo
   
+         convection_tracer = convection_tracer_save
+         if(irain == 2) return
 
          !do i=its,itf
          ! if(do_this_column(i,j) == 0) cycle
@@ -1776,6 +1784,15 @@ module module_cu_gf_monan
       !-- only for debug (atmos composition)
       real, allocatable, dimension (:,:,:),save    ::   se_chem_update
 
+      convection_tracer = int(cum_t_star(2))
+
+      if(ixxx==2 .and.  int(cum_t_star(2)) .le. 1 ) return
+      
+      if(ixxx==2 .and.  int(cum_t_star(2)) == 2 ) convection_tracer = 1
+      if(ixxx==1 .and.  int(cum_t_star(2)) == 2 ) convection_tracer = 0
+
+
+
       !--only for debug
       if(p_use_gate) then
          if( .not. allocated(se_chem_update)) allocate(se_chem_update(3,kts:kte,its:ite))
@@ -1944,7 +1961,7 @@ module module_cu_gf_monan
                                 ,qeso_cup,po,po_cup,zo_cup,heo,hkbo,qo,qeso,entr_rate_2d,hcot,k22,kbmax  &
                                 ,klcl,kbcon,ktop,depth_neg_buoy,frh_bcon,start_level,use_excess,max_ktop &
                                 ,zqexec,ztexec,x_add_buoy,xland,cnvcf,heso,wlpool,overshoot              &
-                                ,itf,ktf,its,ite, kts,kte)
+                                ,itf,ktf,its,ite, kts,kte,var2d1,buoy_exc)
       
       enddo loop_entr_trigger
       !
@@ -2198,7 +2215,7 @@ module module_cu_gf_monan
                      ,qrcdo,qo_cup,qcdo,pwo,pwdo,p_liq_ice,melting,dbydo,us,vs         &
                      ,uc,vc,u_cup,v_cup,ucd,vcd,zuo,zdo,zenv,dd_massdetro,dd_massentro &
                      ,up_massentro,up_massdetro,dellu, dellv, dellah, dellat, dellaq   &
-                     ,dellaqc, dellabuoy, subten_H, subten_Q, subten_T, subten_U, subten_V)
+                     ,dellaqc, dellabuoy, subten_H, subten_Q, subten_U, subten_V       )
 
       !
       !--- apply environmental subsidence on grid-scale ice and liq water contents, and cloud fraction (Upwind scheme)
@@ -2334,7 +2351,7 @@ module module_cu_gf_monan
                          ,xf_dicycle,outu,outv,dellu,dellv,dtime,po_cup,kbcon          &
                          ,dellabuoy,outbuoy,dellampqi,outmpqi,dellampql,outmpql        &
                          ,dellampcf,outmpcf,nmp,xf_coldpool,wlpool_bcon                &
-                         ,subten_T,subten_Q,subten_U,subten_V,piexner,precip_rescaled  )
+                         ,subten_T,subten_Q,piexner,precip_rescaled                    )
       !
       !--- get the net precipitation flux (after downdraft evaporation)
       !
@@ -2450,6 +2467,7 @@ module module_cu_gf_monan
       !--- for tracer convective transport / radiation coupling / outputs
       !
       if(min_up_cld_frc > 1.e-6) then
+         direct_coupl_conv_rad = .true.
          do vtp_index = get_num_elements(vec_ok),1,-1
             i = get_data_value(vec_ok,vtp_index)
             do k=kts,ktf
@@ -2467,7 +2485,7 @@ module module_cu_gf_monan
          !var2d1(:) = aa1(:)
          !var2d2(:) = aa1_bl(:)
          !var2d1(:) = vshear2(:)
-          var2d1(:) = entr_rate(:)
+         !var2d1(:) = entr_rate(:)
          !var2d1(:) = bulk_wshear_factor(:)
          !var2d2(:) = E_tilde(:)
           var2d2(:) = x_add_buoy(:)
@@ -4271,7 +4289,8 @@ module module_cu_gf_monan
                               ,qeso_cup,po,po_cup,z_cup,heo,hkbo,qo,qeso,entr_rate_2d,hcot   &
                               ,k22,kbmax,klcl,kbcon,ktop,depth_neg_buoy,frh                  &
                               ,start_level_,use_excess,max_ktop,zqexec,ztexec,x_add_buoy     &
-                              ,xland,cnvcf,heso,wlpool,overshoot,itf,ktf,its,ite, kts,kte)
+                              ,xland,cnvcf,heso,wlpool,overshoot,itf,ktf,its,ite,kts,kte     &
+                              ,var2d1,buoy_exc)
 
       implicit none
       character *(*)            ,intent (in   ) :: cumulus
@@ -4281,10 +4300,10 @@ module module_cu_gf_monan
       integer, dimension (:)    ,intent (inout) :: kbcon,ierr,ktop,klcl,k22
       real                                      :: overshoot
       real,    dimension (:,:)  ,intent (in   ) :: heo_cup,heso_cup,po_cup,z_cup,heo &
-                                                  ,qo_cup,qeso_cup,po,qo,qeso,heso
+                                                  ,qo_cup,qeso_cup,po,qo,qeso,heso,buoy_exc
       real,    dimension (:)    ,intent (in   ) :: cap_max_in,cap_inc,xland,wlpool
       real,    dimension (:)    ,intent (in   ) :: zqexec,ztexec,x_add_buoy
-      real,    dimension (:)    ,intent (inout) :: hkbo,depth_neg_buoy,frh
+      real,    dimension (:)    ,intent (inout) :: hkbo,depth_neg_buoy,frh,var2d1
       real,    dimension (:,:)  ,intent (in)    :: entr_rate_2d,cnvcf
       real,    dimension (:,:)  ,intent (inout) :: hcot
 
@@ -4352,15 +4371,31 @@ module module_cu_gf_monan
             if(cap_max(i) >= depth_neg_buoy(i)) cycle loop0
             
             icount = icount + 1
-
-            !--- use this for just 'icount = 3' searches (original k22)
-            if(cap_max(i) < depth_neg_buoy(i) .and. icount > 10) then
+            if(cumulus == 'deep') var2d1(i) = icount
+            !
+            !if(cap_max(i) < depth_neg_buoy(i) .and. icount > 10) then
+            !               ierr(i)=30 ; is_removed = remove(vec_ok, i)
+            !               ierrc(i)="could not find reasonable kbcon in cup_cloud_limits"
+            !               cycle loop0
+            !endif
+            !---
+            if(convection_tracer == 1) then
+                  if(cap_max(i) < depth_neg_buoy(i) .and. buoy_exc(kbcon(i),i) < mx_buoy1) then
                           ierr(i)=30 ; is_removed = remove(vec_ok, i)
                           ierrc(i)="could not find reasonable kbcon in cup_cloud_limits"
                           cycle loop0
             endif
-            !---
 
+            else
+
+                  if(cap_max(i) < depth_neg_buoy(i) .and. icount > 10) then
+                        ierr(i)=30 ; is_removed = remove(vec_ok, i)
+                        ierrc(i)="could not find reasonable kbcon in cup_cloud_limits"
+                        cycle loop0
+                  endif
+            endif
+            !
+            !
             !- if am here -> kbcon not found for air parcels from k22 level
             k22(i)=k22(i)+1
             !--- increase capmax
@@ -4561,7 +4596,7 @@ module module_cu_gf_monan
                             ,xf_dicycle,outu,outv,dellu,dellv,dtime,po_cup,kbcon             &
                             ,dellabuoy,outbuoy, dellampqi,outmpqi,dellampql,outmpql          &
                             ,dellampcf,outmpcf ,nmp,xf_coldpool,wlpool_bcon                  &
-                            ,subten_T,subten_Q,subten_U,subten_V,piexner,precip_rescaled     )
+                            ,subten_T,subten_Q,piexner,precip_rescaled                       )
       implicit none
       !
       integer   ,intent (in   )            :: ichoice,itf,ktf,its,ite, kts,kte
@@ -4583,7 +4618,7 @@ module module_cu_gf_monan
       character *(*)            ,intent (in   ) :: cumulus
       real,    dimension (:,:)  ,intent (inout) :: xf_ens,pr_ens
       real,    dimension (:,:)  ,intent (out  ) :: outtem,outq,outqc,outu,outv,outbuoy &
-                                                  ,subten_T,subten_Q,subten_U,subten_V
+                                                  ,subten_T,subten_Q
 
       real,    dimension (:,:,:),intent (out  ) :: outmpqi,outmpql,outmpcf
       
@@ -6236,8 +6271,6 @@ module module_cu_gf_monan
       if(icumulus_gf(mid) /= OFF) then
          use_inv_layers = .true.
       endif
-
-      if(maxval(cum_min_up_cld_frc) < 1.e-6) direct_coupl_conv_rad = .false.
       
       if(mynum==local_io_node) then
          !- print the namelist
@@ -6295,7 +6328,6 @@ module module_cu_gf_monan
          print*, 'use_smooth_prof    ' , use_smooth_prof
          print*, 'cum_use_smooth_tend' , cum_use_smooth_tend
          print*, 'use_random_num     ' , use_random_num
-         print*, 'overshoot          ' , real(overshoot          ,4)
 
          print*,'!---- the cloud microphysics'
          print*, 'autoconv           ' , autoconv
@@ -6321,8 +6353,8 @@ module module_cu_gf_monan
 
          print*,'!---- couplings w/ other parameterizations'
          print*, 'lightning_diag     ' , lightning_diag
+         print*, 'overshoot          ' , real(overshoot          ,4)
          print*, 'liq_ice_number_conc' , liq_ice_number_conc
-         print*, 'dire_coupl_conv_rad' , direct_coupl_conv_rad
 
          print*, '!----misc controls'
          print*, 'output_sound       ' , output_sound
@@ -7998,7 +8030,7 @@ module module_cu_gf_monan
                         ,zuo,zdo,zenv,dd_massdetro,dd_massentro                   &
                         ,up_massentro,up_massdetro                                &
                         ,dellu, dellv, dellah, dellat, dellaq ,dellaqc, dellabuoy &
-                        ,subten_H, subten_Q, subten_T, subten_U, subten_V         )
+                        ,subten_H, subten_Q, subten_U, subten_V                   )
 
       implicit none
       character *(*)  ,intent (in) :: cumulus
@@ -8015,8 +8047,7 @@ module module_cu_gf_monan
                                                ,up_massentro,up_massdetro   
       
       real     ,intent (out ), dimension(:,:) :: dellu, dellv, dellah, dellat, dellaq, dellaqc &
-                                                ,dellabuoy, subten_H, subten_Q, subten_T       &
-                                                ,subten_U, subten_V 
+                                                ,dellabuoy, subten_H, subten_Q,subten_U, subten_V 
 
       !-- local vars
       integer :: i,k,vtp_index
@@ -8635,7 +8666,6 @@ module module_cu_gf_monan
                           ,20.0e-4 & !mid
                          /)
       cum_min_up_cld_frc= (/0.02,  0.07,  0.05/) ! deep, shallow, congestus
-      direct_coupl_conv_rad = .true.
       use_lcl_ctrl_entr = 0
       use_pass_cloudvol = 0
       use_rhu_ctrl_entr = 0
@@ -10100,7 +10130,8 @@ module module_cu_gf_monan
          character*(*), intent (in)             :: cumulus
          integer  ,intent (in )                 :: itf,ktf, its,ite, kts,kte
          integer  ,intent (in )                 :: MOIST_TRIGGER
-         real     ,intent (out)                 :: cap_max_inc,cap_maxs
+         real     ,intent (in)                 :: cap_maxs
+         real     ,intent (out)                 :: cap_max_inc
          real     ,intent (out), dimension(:)   :: cap_max_increment,cap_max
 
          !-local vars

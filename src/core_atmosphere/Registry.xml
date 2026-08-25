@@ -640,9 +640,15 @@
 			<var name="graupelnc"/>
 			<var name="sr"/>
 			<var name="i_rainc"/>
+               <var name="i_rainc2"/>
+
 			<var name="cuprec"/>
+               <var name="cuprec2"/>
 			<var name="rainc"/>
-			<var name="raincv"/>
+               <var name="rainc2"/>
+
+   		     <var name="raincv"/>
+               <var name="raincv2"/>
 			<var name="nca"/>
 			<var name="cubot"/>
 			<var name="cutop"/>
@@ -952,8 +958,12 @@
                         <var name="precipci"/>
                         <var name="ctt"/>
 			<var name="cuprec"/>
+               <var name="cuprec2"/>
 			<var name="i_rainc"/>
+               <var name="i_rainc2"/>
+
 			<var name="rainc"/>
+               <var name="rainc2"/>
 			<var name="kpbl"/>
 			<var name="hpbl"/>
 			<var name="hfx"/>
@@ -1012,6 +1022,7 @@
 #ifdef DO_PHYSICS
 			<var name="olrtoa"/>
 			<var name="rainc"/>
+               <var name="rainc2"/>
 			<var name="rainnc"/>
 			<var name="refl10cm_max"/>
 			<var name="refl10cm_1km"/>
@@ -2343,19 +2354,33 @@
                 <var name="i_rainc" type="integer" dimensions="nCells Time" units="unitless"
                      description="incidence of accumulated convective precipitation greater than config_bucket_rainc"
                      packages="cu_grell_freitas_in;cu_kain_fritsch_in;cu_ntiedtke_in;cu_gf_monan_in"/>
+                <var name="i_rainc2" type="integer" dimensions="nCells Time" units="unitless"
+                     description="incidence of accumulated convective precipitation greater than config_bucket_rainc 2"
+                     packages="cu_grell_freitas_in;cu_kain_fritsch_in;cu_ntiedtke_in;cu_gf_monan_in"/>
 
                 <var name="cuprec" type="real" dimensions="nCells Time" units="mm s^{-1}"
                      description="convective precipitation rate"
                      packages="cu_grell_freitas_in;cu_kain_fritsch_in;cu_ntiedtke_in;cu_gf_monan_in"/>
 
+
+                <var name="cuprec2" type="real" dimensions="nCells Time" units="mm s^{-1}"
+                     description="convective precipitation rate2"
+                     packages="cu_grell_freitas_in;cu_kain_fritsch_in;cu_ntiedtke_in;cu_gf_monan_in"/>
+
                 <var name="rainc" type="real" dimensions="nCells Time" units="mm"
                      description="accumulated convective precipitation"
+                     packages="cu_grell_freitas_in;cu_kain_fritsch_in;cu_ntiedtke_in;cu_gf_monan_in"/>
+                <var name="rainc2" type="real" dimensions="nCells Time" units="mm"
+                     description="accumulated convective precipitation2"
                      packages="cu_grell_freitas_in;cu_kain_fritsch_in;cu_ntiedtke_in;cu_gf_monan_in"/>
 
                 <var name="raincv" type="real" dimensions="nCells Time" units="mm"
                      description="time-step convective precipitation"
                      packages="cu_grell_freitas_in;cu_kain_fritsch_in;cu_ntiedtke_in;cu_gf_monan_in"/>
 
+                <var name="raincv2" type="real" dimensions="nCells Time" units="mm"
+                     description="time-step convective precipitation"
+                     packages="cu_grell_freitas_in;cu_kain_fritsch_in;cu_ntiedtke_in;cu_gf_monan_in"/>
 
                 <!-- ... KAIN_FRITSCH ONLY: -->
                 <var name="nca" type="real" dimensions="nCells Time" units="s"

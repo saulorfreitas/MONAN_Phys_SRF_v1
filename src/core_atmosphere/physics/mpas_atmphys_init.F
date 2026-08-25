@@ -108,7 +108,7 @@
                    config_radt_sw_scheme
 
  integer,pointer:: nCellsSolve,nLags
- integer,dimension(:),pointer  :: i_rainc,i_rainnc
+ integer,dimension(:),pointer  :: i_rainc,i_rainnc,i_rainc2
  integer,dimension(:),pointer  :: i_acswdnb,i_acswdnbc,i_acswdnt,i_acswdntc, &
                                   i_acswupb,i_acswupbc,i_acswupt,i_acswuptc, &
                                   i_aclwdnb,i_aclwdnbc,i_aclwdnt,i_aclwdntc, &
@@ -233,6 +233,14 @@
        i_rainc(iCell)  = 0
     enddo
  endif
+ if(.not. config_do_restart .and. config_convection_scheme.ne.'off') then
+    call mpas_pool_get_array(diag_physics,'i_rainc2',i_rainc2)
+    do iCell = 1, nCellsSolve
+       i_rainc2(iCell)  = 0
+    enddo
+ endif
+
+
  if(.not. config_do_restart .and. config_microp_scheme.ne.'off') then
     call mpas_pool_get_array(diag_physics,'i_rainnc',i_rainnc)
     do iCell = 1, nCellsSolve
