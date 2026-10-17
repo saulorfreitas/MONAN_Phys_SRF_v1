@@ -624,7 +624,7 @@ module module_cu_gf_monan
       FSCAV         (:)   = 0.1
       stochastic_sig(:,:) = 1.0  
       aot500        (:,:) = 0.0
-      col_sat       (:,:) = 0.0  !falta
+      col_sat       (:,:) = 0.0  !falta 
       !----------------------------------------------------------------------
       !print*, 'domain', its,itf,ite,kts,ktf,kte,jts,jtf,jte
       !print*,'ins---',maxval(conprr(its:ite,jts:jte))*3600 &
@@ -1869,7 +1869,7 @@ module module_cu_gf_monan
            !
            !---- tmp
            entr_factor = 1.0
-           if( use_shear_ctrl_entr < 0 .and. trim(cumulus) == 'deep') entr_factor = 1.33333
+           if( (use_shear_ctrl_entr < 0 .and. use_shear_ctrl_entr > -4) .and.   trim(cumulus) == 'deep') entr_factor = 1.33333
 
            !--- define the initial entrainment rate and the mininum acceptable entrainment rate
            !--- formulation 1: reescale entrainment rate in terms of the grid spacing (Zhao et al 2024, GRL https://doi.org/10.1029/2024GL110735)
@@ -4297,7 +4297,7 @@ module module_cu_gf_monan
                                                   !--- the severity of the thunderstorm.
       integer                      ::   i,k,vtp_index,icount
       integer, dimension (its:ite) ::   start_level
-      real                         ::   dz, denom, min_deep_top, cloud_depth    
+      real                         ::   dz, denom, min_deep_top, cloud_depth
       real   , dimension (its:ite) ::   x_add,cap_max
       real   , dimension (kts:kte,its:ite) ::   h_env_eff
 
@@ -11720,7 +11720,8 @@ module module_cu_gf_monan
           real   ,parameter :: center1 = 5.0   , width1 = 2.0  , sharpness1 = 5.0
           real   ,parameter :: center2 = 2400.0, width2 = 800.0, sharpness2 = 5.0
           real   ,parameter :: center3 = 0.5   , width3 = 0.1  , sharpness3 = 2.0
-          real   ,parameter :: center4 = 5.0   , width4 = 4.0  , sharpness4 = 2.0 , increase_entr_factor = 0.5
+          real   ,parameter :: center4 = 5.0   , width4 = 4.0  , sharpness4 = 2.0  , increase_entr_factor = 0.5
+         !real   ,parameter :: center4 = 5.0   , width4 = 8.   , sharpness4 = 2.0  , increase_entr_factor = 0.5
 
           integer :: i,vtp_index,k1,k2
           real :: scale_factor1, scale_factor2,mask,scale_factor3,scale_factor4
@@ -11763,12 +11764,14 @@ module module_cu_gf_monan
                            vshear = sqrt( (u2-u1)**2 + (v2-v1)**2 )
                            scale_factor4 = 1.0 - increase_entr_factor*tanh(sharpness4 * (vshear - center4) / width4)
                            scale_factor4 = max(0., max(scale_factor4,1.)) ! = 1 for vshear > 5, [1.5, 1] for vshear [0, 5]
+                          !scale_factor4 = max(0., max(scale_factor4,0.5))! = 1 for vshear > 10, [1.5, 1] for vshear [0, 5]
                            bulk_wshear_factor(i) = scale_factor4 - 1.0    ! = 0 for vshear > 5, [0, 0.5] for vshear [5, 0]
                      enddo
                   endif 
                endif
           endif
           !---- modify the entrainment based on LCL and wind-shear
+          !print*,"maxmin",maxval(bulk_wshear_factor),minval(bulk_wshear_factor)
           do vtp_index = get_num_elements(vec_ok),1,-1; i = get_data_value(vec_ok,vtp_index)
             !                     source of organization                    sink of organization
             !                      decrease entr rate                        increase entr rate
