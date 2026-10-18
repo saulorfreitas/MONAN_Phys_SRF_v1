@@ -1921,7 +1921,8 @@ module module_cu_gf_monan
            !
            !--- start_level
            !
-           start_level(:)=  KLCL(:) !start_level(:)=  KTS
+           !start_level(:)=  KLCL(:) 
+           start_level(:)=  K22 (:)
            !
            !--- determine the vertical entrainment/detrainment profiles
            !
@@ -1940,7 +1941,7 @@ module module_cu_gf_monan
            !
            !--- determine the level of convective cloud base  - kbcon, cloud top - ktop
            !
-           call cup_cloud_limits(cumulus,ierrc,ierr,cap_max_increment,cap_max,heo_cup,heso_cup,qo_cup    &
+           call cup_cloud_limits2(cumulus,ierrc,ierr,cap_max_increment,cap_max,heo_cup,heso_cup,qo_cup   &
                                 ,qeso_cup,po,po_cup,zo_cup,heo,hkbo,qo,qeso,entr_rate_2d,hcot,k22,kbmax  &
                                 ,klcl,kbcon,ktop,depth_neg_buoy,frh_bcon,start_level,use_excess,max_ktop &
                                 ,zqexec,ztexec,x_add_buoy,xland,cnvcf,heso,wlpool,overshoot              &
@@ -2442,7 +2443,7 @@ module module_cu_gf_monan
                      , qeso_cup, qo_cup, qo , qrco, qrs, sc_dn_chem, sc_up_chem, se_chem, se_cup_chem, subten_h, subten_q &
                      , subten_t , t_cup, t, tn, tot_pw_dn_chem, tot_pw_up_chem, up_massentro, up_massdetro, us, vvel1d &
                      , vvel2d, xmb, z_cup, zdo, zenv, zo, zqexec, zuo, zws,  heso_cup, heo_cup,cumulus,ntimes,LIQ_ICE_NUMBER_CONC&
-                     , wrtgrads)
+                     , wrtgrads,hcot)
       endif
       ! 
       !-- miscelaneous procedures for output and/or debug
@@ -4268,6 +4269,148 @@ module module_cu_gf_monan
       !print*,trim(integ_interval),maxval(AA0),minval(AA0)
    end subroutine cup_up_cape_cin
    !------------------------------------------------------------------------------------
+      subroutine cup_cloud_limits2(cumulus,ierrc,ierr,cap_inc,cap_max_in,heo_cup,heso_cup,qo_cup &
+                              ,qeso_cup,po,po_cup,z_cup,heo,hkbo,qo,qeso,entr_rate_2d,hcot   &
+                              ,k22,kbmax,klcl,kbcon,ktop,depth_neg_buoy,frh                  &
+                              ,start_level_,use_excess,max_ktop,zqexec,ztexec,x_add_buoy     &
+                              ,xland,cnvcf,heso,wlpool,overshoot,itf,ktf,its,ite,kts,kte     &
+                              ,var2d1,buoy_exc)
+
+      implicit none
+      character *(*)            ,intent (in   ) :: cumulus
+      character(len=128)        ,intent (inout) :: ierrc(:)
+      integer                   ,intent (in   ) :: itf,ktf,its,ite, kts,kte,use_excess
+      integer, dimension (:)    ,intent (in   ) :: kbmax,start_level_,max_ktop
+      integer, dimension (:)    ,intent (inout) :: kbcon,ierr,ktop,klcl,k22
+      real                                      :: overshoot
+      real,    dimension (:,:)  ,intent (in   ) :: heo_cup,heso_cup,po_cup,z_cup,heo &
+                                                  ,qo_cup,qeso_cup,po,qo,qeso,heso,buoy_exc
+      real,    dimension (:)    ,intent (in   ) :: cap_max_in,cap_inc,xland,wlpool
+      real,    dimension (:)    ,intent (in   ) :: zqexec,ztexec,x_add_buoy
+      real,    dimension (:)    ,intent (inout) :: hkbo,depth_neg_buoy,frh,var2d1
+      real,    dimension (:,:)  ,intent (in   ) :: entr_rate_2d,cnvcf
+      real,    dimension (:,:)  ,intent (inout) :: hcot
+
+      !  local variables in this routine
+      real, parameter :: cap_max_wlpool = 0.0 , pbl_ave_rho = 1.0
+      real            :: Z_overshoot !--- height of cloud overshoot is 10% higher than the LNB.
+                                     !--- Typically it can 2 - 2.5km higher, but it depends on
+                                     !--- the severity of the thunderstorm.
+      integer                      ::   i,k,vtp_index,next_k22
+      integer, dimension (its:ite) ::   start_level
+      real                         ::   dz, denom, min_deep_top, cloud_depth
+      real   , dimension (its:ite) ::   x_add,cap_max
+      real   , dimension (kts:kte,its:ite) ::   h_env_eff
+
+      ktop       (:) = kts
+      kbcon      (:) = kts
+      cap_max    (:) = cap_max_in(:) + cap_max_wlpool * (0.5*wlpool(:)**2)*pbl_ave_rho
+      x_add      (:) = c_alvl*zqexec(:) + c_cp*ztexec(:) + x_add_buoy(:)
+      start_level(:) = start_level_(:)
+
+      if(use_pass_cloudvol == 1) then
+           h_env_eff(:,:) = (1.-cnvcf(:,:))*heo(:,:) + cnvcf(:,:)*heso(:,:)
+      else
+           h_env_eff(:,:) = heo(:,:)
+      endif
+      !
+      !--- Determine the level of convective cloud base  - kbcon
+      !
+      loop0: do vtp_index = get_num_elements(vec_ok),1,-1 ; i = get_data_value(vec_ok,vtp_index)
+         next_k22 = 0
+         hcot(kts:start_level(i),i) = hkbo(i) ! assumed no entrainment between kts:start_level(i)
+
+         loop1:  do while(ierr(i) == 0)
+
+            kbcon(i)=start_level(i)
+            do k=start_level(i)+1, ktf
+               dz        = z_cup(k,i)-z_cup(k-1,i)
+               denom     = 1.+0.5*entr_rate_2d(k-1,i)*dz
+               hcot(k,i) = ( (1.-0.5*entr_rate_2d(k-1,i)*dz)*hcot      (k-1,i)     &
+                                   + entr_rate_2d(k-1,i)*dz *h_env_eff (k-1,i) ) / denom
+               
+               if(k==start_level(i)+1) hcot(k,i) = hcot(k,i) + x_add(i)*entr_rate_2d(k-1,i)*dz/denom
+            enddo
+            hcot(ktf+1,i) = heso_cup(ktf+1,i)
+            
+            loop2: do while (hcot(kbcon(i),i) < heso_cup(kbcon(i),i))                      
+                      kbcon(i) = kbcon(i) + 1
+                      if(kbcon(i) > kbmax(i)) then 
+                         next_k22 = 1 ; exit loop2
+                      endif
+            enddo loop2
+
+            if(next_k22 == 0) cycle loop0
+            !
+            !- if am here -> kbcon not found for air parcels from k22 level
+            k22(i)=k22(i)+1
+ 
+            !- get new hkbo
+            call get_cloud_bc(cumulus,ave_layer,kts,kte,ktf,xland(i),po(kts:kte,i),heo_cup (kts:kte,i) &
+                             ,hkbo (i),k22(i),x_add(i))
+            
+            start_level(i)=start_level(i)+1
+            if( start_level(i) > kbmax(i) ) then
+                  ierr(i)=3 ; is_removed = remove(vec_ok, i)
+                  ierrc(i)="could not find reasonable kbcon in cup_kbcon : above kbmax"
+                  exit loop0
+            endif
+            !
+            hcot(start_level(i),i)=hkbo (i)
+         enddo loop1
+      
+      enddo loop0
+      !
+      !--- Test if air parcel has enough energy (cap_max) to reach the positive buoyant region
+      !
+      loop3: do vtp_index = get_num_elements(vec_ok),1,-1 ; i = get_data_value(vec_ok,vtp_index)
+                 !---     cloud base pressure and max moist static energy pressure
+                 !---     i.e., the depth (in mb) of the layer of negative buoyancy
+                 depth_neg_buoy(i) = - (po_cup(kbcon(i),i)-po_cup(start_level(i),i))
+
+                 !--- test if the air parcel has enough energy to reach the positive buoyant region
+                 if(cap_max(i) >= depth_neg_buoy(i)) cycle loop3
+                 ierr(i)=30 ; is_removed = remove(vec_ok, i)
+                 ierrc(i)="not  enough energy to reach the positive buoyant region in cup_cloud_limits"
+      enddo loop3
+      !
+      !--- Determine the level of neutral buoyancy - ktop
+      !
+      loop4: do vtp_index = get_num_elements(vec_ok),1,-1 ; i = get_data_value(vec_ok,vtp_index)
+               do k=kbcon(i)+1,ktf-1
+                  if(hcot(k,i) < heso_cup(k,i))then
+                     ktop(i) = k ; cycle loop4
+                  endif
+               enddo
+      enddo loop4
+      !
+      !--- check cloud top for deep convection
+      !
+      if(cumulus == 'deep') then
+            min_deep_top=500. ! mbar 
+            if(icumulus_gf(mid) == OFF) min_deep_top=600. ! mbar            
+            do vtp_index = get_num_elements(vec_ok),1,-1 ; i = get_data_value(vec_ok,vtp_index)            
+               cloud_depth =  po_cup(kbcon(i),i)-po_cup(ktop(i),i)
+               if(po_cup(ktop(i),i) > min_deep_top .or. cloud_depth < min_cloud_depth ) then
+                  ierr(i)=33 ; is_removed = remove(vec_ok, i)
+                  ierrc(i)='cloud top or cloud_depth too low for deep'
+               endif
+            enddo
+            !
+            !--- apply overshoot 
+            if(overshoot > 1.e-6) then
+              loop5: do vtp_index = get_num_elements(vec_ok),1,-1 ; i = get_data_value(vec_ok,vtp_index)                         
+                         Z_overshoot = (1. + overshoot) * z_cup(ktop(i),i)
+                         do k=ktop(i)+1,ktf-1
+                              if(Z_overshoot <= z_cup(k,i)) then
+                                    ktop(i) = min(k, max_ktop(i)); cycle loop5
+                              endif
+                         enddo                         
+               enddo loop5
+            endif
+      endif
+   end subroutine cup_cloud_limits2
+   !------------------------------------------------------------------------------------
    subroutine cup_cloud_limits(cumulus,ierrc,ierr,cap_inc,cap_max_in,heo_cup,heso_cup,qo_cup &
                               ,qeso_cup,po,po_cup,z_cup,heo,hkbo,qo,qeso,entr_rate_2d,hcot   &
                               ,k22,kbmax,klcl,kbcon,ktop,depth_neg_buoy,frh                  &
@@ -4349,7 +4492,6 @@ module module_cu_gf_monan
             depth_neg_buoy(i) = - (po_cup(kbcon(i),i)-po_cup(start_level(i),i))
 
             !- test if the air parcel has enough energy to reach the positive buoyant region
-            !print*,'x=',cap_max(i),depth_neg_buoy(i)
 
             if(cap_max(i) >= depth_neg_buoy(i)) cycle loop0
             
@@ -6738,7 +6880,7 @@ module module_cu_gf_monan
       integer  ,intent (out  ), dimension(:)   :: kbmax,kdet,k22,kstabm
       
       !-local vars
-      integer :: i,k,start_k22,vtp_index
+      integer :: i,k,start_k22,vtp_index,k23
 
        
       kbmax  (:) = kts
@@ -6790,6 +6932,8 @@ module module_cu_gf_monan
          i = get_data_value(vec_ok,vtp_index)
          
          k22(i)=maxloc(heo_cup(start_k22:kbmax(i)+1,i),1)+start_k22-1
+         !k23   =maxloc(heo_cup(k22(i)+1 :kbmax(i)+1,i),1)+k22(i)
+         !print*,'maxloc k22',k22(i),k23
          k22(i)=max(k22(i),start_k22)
          if(cumulus == 'shallow') then
             k22(i)=min(2,k22(i))
@@ -8789,7 +8933,7 @@ module module_cu_gf_monan
                              , qeso_cup, qo_cup, qo , qrco, qrr, sc_dn_chem, sc_up_chem, se_chem, se_cup_chem, subten_h, subten_q &
                              , subten_t , t_cup, t_in, tn, tot_pw_dn_chem, tot_pw_up_chem, up_massentro, up_massdetro, us, vvel1d &
                              , vvel2d, xmb, z_cup, zdo, zenv, zo, zqexec, zuo, zws, heso_cup, heo_cup, cumulus,ntimes,LIQ_ICE_NUMBER_CONC&
-                             , wrtgrads)
+                             , wrtgrads,hcot)
          implicit none
          ! Parameters:
          character(len=*), parameter :: p_procedure_name = 'gateSoundings'
@@ -8883,6 +9027,7 @@ module module_cu_gf_monan
          real, intent(in) :: zqexec(:)
          real, intent(in) :: zuo(:,:)
          real, intent(in) :: zws(:)
+         real, intent(in) :: hcot(:,:)
 
          character(len=*), intent(in) :: cumulus
 
@@ -9016,7 +9161,8 @@ module module_cu_gf_monan
                !call set_grads_var(jl,k,nvar,QCUP(k,i),"qcup"//cty ,'C_UP','3d')
                call setGradsVar(jl, k, nvar, t_cup(k,i) - 273.15, "te"//cty, ' K', '3d')
                call setGradsVar(jl, k, nvar, 1000.*q_cup(k,i), "qe"//cty, ' kg kg-1', '3d')
-               call setGradsVar(jl, k, nvar, he_cup(k,i), "he"//cty, ' he', '3d')
+               call setGradsVar(jl, k, nvar, he_cup(k,i)/c_cp, "he"//cty, ' he', '3d')
+               call setGradsVar(jl, k, nvar, hcot  (k,i)/c_cp, "hcot"//cty, ' hcot', '3d')
                call setGradsVar(jl, k, nvar, HKB(i), "hkb"//cty, ' H', '2d')
                call setGradsVar(jl, k, nvar, HKB(i), "hkb"//cty, ' H', '2d')
                call setGradsVar(jl, k, nvar, 1000.*zqexec(i), "qex"//cty, ' qex', '2d')
