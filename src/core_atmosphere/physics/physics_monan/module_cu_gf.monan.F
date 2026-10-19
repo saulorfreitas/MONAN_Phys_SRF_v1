@@ -1921,8 +1921,8 @@ module module_cu_gf_monan
            !
            !--- start_level
            !
-           !start_level(:)=  KLCL(:) 
-           start_level(:)=  K22 (:)
+           start_level(:)=  KLCL(:) 
+           !start_level(:)=  K22 (:)
            !
            !--- determine the vertical entrainment/detrainment profiles
            !
@@ -1941,11 +1941,10 @@ module module_cu_gf_monan
            !
            !--- determine the level of convective cloud base  - kbcon, cloud top - ktop
            !
-           call cup_cloud_limits2(cumulus,ierrc,ierr,cap_max_increment,cap_max,heo_cup,heso_cup,qo_cup   &
-                                ,qeso_cup,po,po_cup,zo_cup,heo,hkbo,qo,qeso,entr_rate_2d,hcot,k22,kbmax  &
-                                ,klcl,kbcon,ktop,depth_neg_buoy,frh_bcon,start_level,use_excess,max_ktop &
-                                ,zqexec,ztexec,x_add_buoy,xland,cnvcf,heso,wlpool,overshoot              &
-                                ,itf,ktf,its,ite, kts,kte,var2d1,buoy_exc)
+           call cup_cloud_limits2(cumulus,ierrc,ierr,cap_max_increment,cap_max,heo_cup,heso_cup,qo_cup       &
+                                 ,qeso_cup,po,po_cup,zo_cup,heo,hkbo,qo,qeso,entr_rate_2d,hcot,k22,kbmax     &
+                                 ,klcl,kbcon,ktop,depth_neg_buoy,frh_bcon,start_level,max_ktop,zqexec,ztexec &
+                                 ,x_add_buoy,xland,cnvcf,heso,wlpool,itf,ktf,its,ite, kts,kte,var2d1,buoy_exc)
       
       enddo loop_entr_trigger
       !
@@ -4272,17 +4271,15 @@ module module_cu_gf_monan
       subroutine cup_cloud_limits2(cumulus,ierrc,ierr,cap_inc,cap_max_in,heo_cup,heso_cup,qo_cup &
                               ,qeso_cup,po,po_cup,z_cup,heo,hkbo,qo,qeso,entr_rate_2d,hcot   &
                               ,k22,kbmax,klcl,kbcon,ktop,depth_neg_buoy,frh                  &
-                              ,start_level_,use_excess,max_ktop,zqexec,ztexec,x_add_buoy     &
-                              ,xland,cnvcf,heso,wlpool,overshoot,itf,ktf,its,ite,kts,kte     &
+                              ,start_level_,max_ktop,zqexec,ztexec,x_add_buoy                &
+                              ,xland,cnvcf,heso,wlpool,itf,ktf,its,ite,kts,kte               &
                               ,var2d1,buoy_exc)
-
       implicit none
       character *(*)            ,intent (in   ) :: cumulus
       character(len=128)        ,intent (inout) :: ierrc(:)
-      integer                   ,intent (in   ) :: itf,ktf,its,ite, kts,kte,use_excess
+      integer                   ,intent (in   ) :: itf,ktf,its,ite, kts,kte
       integer, dimension (:)    ,intent (in   ) :: kbmax,start_level_,max_ktop
       integer, dimension (:)    ,intent (inout) :: kbcon,ierr,ktop,klcl,k22
-      real                                      :: overshoot
       real,    dimension (:,:)  ,intent (in   ) :: heo_cup,heso_cup,po_cup,z_cup,heo &
                                                   ,qo_cup,qeso_cup,po,qo,qeso,heso,buoy_exc
       real,    dimension (:)    ,intent (in   ) :: cap_max_in,cap_inc,xland,wlpool
@@ -4317,10 +4314,10 @@ module module_cu_gf_monan
       !--- Determine the level of convective cloud base  - kbcon
       !
       loop0: do vtp_index = get_num_elements(vec_ok),1,-1 ; i = get_data_value(vec_ok,vtp_index)
-         next_k22 = 0
+         !next_k22 = 0
          hcot(kts:start_level(i),i) = hkbo(i) ! assumed no entrainment between kts:start_level(i)
 
-         loop1:  do while(ierr(i) == 0)
+         !loop1:  do while(ierr(i) == 0)
 
             kbcon(i)=start_level(i)
             do k=start_level(i)+1, ktf
@@ -4336,28 +4333,32 @@ module module_cu_gf_monan
             loop2: do while (hcot(kbcon(i),i) < heso_cup(kbcon(i),i))                      
                       kbcon(i) = kbcon(i) + 1
                       if(kbcon(i) > kbmax(i)) then 
-                         next_k22 = 1 ; exit loop2
+                         ierr(i)=3 ; is_removed = remove(vec_ok, i)
+                         ierrc(i)="could not find reasonable kbcon in cup_kbcon : above kbmax"
+
+                         !next_k22 = 1  
+                         exit loop2
                       endif
             enddo loop2
 
-            if(next_k22 == 0) cycle loop0
-            !
-            !- if am here -> kbcon not found for air parcels from k22 level
-            k22(i)=k22(i)+1
+         !    if(next_k22 == 0) cycle loop0
+         !    !
+         !    !- if am here -> kbcon not found for air parcels from k22 level
+         !    k22(i)=k22(i)+1
  
-            !- get new hkbo
-            call get_cloud_bc(cumulus,ave_layer,kts,kte,ktf,xland(i),po(kts:kte,i),heo_cup (kts:kte,i) &
-                             ,hkbo (i),k22(i),x_add(i))
+         !    !- get new hkbo
+         !    call get_cloud_bc(cumulus,ave_layer,kts,kte,ktf,xland(i),po(kts:kte,i),heo_cup (kts:kte,i) &
+         !                     ,hkbo (i),k22(i),x_add(i))
             
-            start_level(i)=start_level(i)+1
-            if( start_level(i) > kbmax(i) ) then
-                  ierr(i)=3 ; is_removed = remove(vec_ok, i)
-                  ierrc(i)="could not find reasonable kbcon in cup_kbcon : above kbmax"
-                  exit loop0
-            endif
-            !
-            hcot(start_level(i),i)=hkbo (i)
-         enddo loop1
+         !    start_level(i)=start_level(i)+1
+         !    if( start_level(i) > kbmax(i) ) then
+         !          ierr(i)=3 ; is_removed = remove(vec_ok, i)
+         !          ierrc(i)="could not find reasonable kbcon in cup_kbcon : above kbmax"
+         !          exit loop0
+         !    endif
+         !    !
+         !    hcot(start_level(i),i)=hkbo (i)
+         ! enddo loop1
       
       enddo loop0
       !
@@ -4372,7 +4373,7 @@ module module_cu_gf_monan
                  if(cap_max(i) >= depth_neg_buoy(i)) cycle loop3
                  ierr(i)=30 ; is_removed = remove(vec_ok, i)
                  ierrc(i)="not  enough energy to reach the positive buoyant region in cup_cloud_limits"
-      enddo loop3
+      enddo loop3 
       !
       !--- Determine the level of neutral buoyancy - ktop
       !
@@ -4414,17 +4415,15 @@ module module_cu_gf_monan
    subroutine cup_cloud_limits(cumulus,ierrc,ierr,cap_inc,cap_max_in,heo_cup,heso_cup,qo_cup &
                               ,qeso_cup,po,po_cup,z_cup,heo,hkbo,qo,qeso,entr_rate_2d,hcot   &
                               ,k22,kbmax,klcl,kbcon,ktop,depth_neg_buoy,frh                  &
-                              ,start_level_,use_excess,max_ktop,zqexec,ztexec,x_add_buoy     &
-                              ,xland,cnvcf,heso,wlpool,overshoot,itf,ktf,its,ite,kts,kte     &
+                              ,start_level_,max_ktop,zqexec,ztexec,x_add_buoy                &
+                              ,xland,cnvcf,heso,wlpool,itf,ktf,its,ite,kts,kte               &
                               ,var2d1,buoy_exc)
-
       implicit none
       character *(*)            ,intent (in   ) :: cumulus
       character(len=128)        ,intent (inout) :: ierrc(:)
-      integer                   ,intent (in   ) :: itf,ktf,its,ite, kts,kte,use_excess
+      integer                   ,intent (in   ) :: itf,ktf,its,ite, kts,kte
       integer, dimension (:)    ,intent (in   ) :: kbmax,start_level_,max_ktop
       integer, dimension (:)    ,intent (inout) :: kbcon,ierr,ktop,klcl,k22
-      real                                      :: overshoot
       real,    dimension (:,:)  ,intent (in   ) :: heo_cup,heso_cup,po_cup,z_cup,heo &
                                                   ,qo_cup,qeso_cup,po,qo,qeso,heso,buoy_exc
       real,    dimension (:)    ,intent (in   ) :: cap_max_in,cap_inc,xland,wlpool
