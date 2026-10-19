@@ -104,7 +104,7 @@ module module_cu_gf_monan
       ,n_cldrop,use_random_num,modConvParGF_initialized,use_pass_cloudvol&
       ,use_lcl_ctrl_entr,use_rhu_ctrl_entr,cum_min_cloud_depth,use_sub3d &
       ,cum_fr_min_entr,use_shear_ctrl_entr,use_cwv_ctrl_entr,adv_trigger &
-      ,dcape_threshold,use_cold_start,cum_min_up_cld_frc
+      ,dcape_threshold,use_cold_start,cum_min_up_cld_frc,use_elev_conv
 
    public makeDropletNumber,makeIceNumber,FractLiqF                      &
       ,coldPoolStart,readGFConvParNML,initModConvParGF,cu_gf_monan_driver&
@@ -179,6 +179,8 @@ module module_cu_gf_monan
    integer :: add_coldpool_trig ! add triggering criteria based on cold pool presence
 
    integer :: use_scale_dep     != 0/1:  scale dependence flag, default = 1
+
+   integer :: use_elev_conv     != 0/1:  elevated convection flag, default = 1
 
    integer :: dicycle           != 0/1/2:  diurnal cycle closure, default = 1
                                 != 2 use not as a closure, but as a trigger function
@@ -1824,6 +1826,7 @@ module module_cu_gf_monan
       !--- define limits of evaporation by the downdrafts
       call get_edt(cumulus,itf,ktf,its,ite,kts,kte,xland,edtmin,edtmax,max_edt_ocean,max_edt_land &
                   ,c0_mid)  
+
       !
       !--- environmental conditions, FIRST HEIGHTS
       !--- calculate moist static energy, heights, qes
@@ -1847,9 +1850,11 @@ module module_cu_gf_monan
                        , hes_cup,z_cup,p_cup,gamma_cup,t_cup,psur,tsur,ierr,z1     &
                        ,itf,ktf,its,ite, kts,kte)
 
+
       call cup_env_clev(tn,qeso,qo,heo,heso,zo,po,qeso_cup,qo_cup, heo_cup,us,vs,u_cup,v_cup   &
                        ,heso_cup,zo_cup,po_cup,gammao_cup ,tn_cup,psur,tsur,ierr,z1            &
                        ,itf,ktf,its,ite, kts,kte)
+
       !
       !--- partition between liq/ice cloud contents
       !
@@ -1922,7 +1927,6 @@ module module_cu_gf_monan
            !--- start_level
            !
            start_level(:)=  KLCL(:) 
-           !start_level(:)=  K22 (:)
            !
            !--- determine the vertical entrainment/detrainment profiles
            !
@@ -1941,11 +1945,24 @@ module module_cu_gf_monan
            !
            !--- determine the level of convective cloud base  - kbcon, cloud top - ktop
            !
-           call cup_cloud_limits2(cumulus,ierrc,ierr,cap_max_increment,cap_max,heo_cup,heso_cup,qo_cup       &
-                                 ,qeso_cup,po,po_cup,zo_cup,heo,hkbo,qo,qeso,entr_rate_2d,hcot,k22,kbmax     &
-                                 ,klcl,kbcon,ktop,depth_neg_buoy,frh_bcon,start_level,max_ktop,zqexec,ztexec &
-                                 ,x_add_buoy,xland,cnvcf,heso,wlpool,itf,ktf,its,ite, kts,kte,var2d1,buoy_exc)
-      
+           if( use_elev_conv == 1 .and. trim(cumulus) == 'deep' ) then
+               !print*,'calling cup_cloud_limits 2', use_elev_conv
+               !-
+               !--- check for elevated convection cloud base
+               call cup_cloud_limits2(cumulus,ierrc,ierr,cap_max_increment,cap_max,heo_cup,heso_cup,qo_cup       &
+                                     ,qeso_cup,po,po_cup,zo_cup,heo,hkbo,qo,qeso,entr_rate_2d,hcot,k22,kbmax     &
+                                     ,klcl,kbcon,ktop,depth_neg_buoy,frh_bcon,start_level,max_ktop,zqexec,ztexec &
+                                     ,x_add_buoy,xland,cnvcf,heso,wlpool,itf,ktf,its,ite, kts,kte,var2d1,buoy_exc&
+                                     ,kpbl)
+           else
+               !print*,'calling cup_cloud_limits  ', use_elev_conv
+               call cup_cloud_limits (cumulus,ierrc,ierr,cap_max_increment,cap_max,heo_cup,heso_cup,qo_cup       &
+                                     ,qeso_cup,po,po_cup,zo_cup,heo,hkbo,qo,qeso,entr_rate_2d,hcot,k22,kbmax     &
+                                     ,klcl,kbcon,ktop,depth_neg_buoy,frh_bcon,start_level,max_ktop,zqexec,ztexec &
+                                     ,x_add_buoy,xland,cnvcf,heso,wlpool,itf,ktf,its,ite, kts,kte,var2d1,buoy_exc)
+
+           endif
+           !
       enddo loop_entr_trigger
       !
       !--- scale dependence factor (sig)
@@ -4269,18 +4286,18 @@ module module_cu_gf_monan
    end subroutine cup_up_cape_cin
    !------------------------------------------------------------------------------------
       subroutine cup_cloud_limits2(cumulus,ierrc,ierr,cap_inc,cap_max_in,heo_cup,heso_cup,qo_cup &
-                              ,qeso_cup,po,po_cup,z_cup,heo,hkbo,qo,qeso,entr_rate_2d,hcot   &
-                              ,k22,kbmax,klcl,kbcon,ktop,depth_neg_buoy,frh                  &
-                              ,start_level_,max_ktop,zqexec,ztexec,x_add_buoy                &
-                              ,xland,cnvcf,heso,wlpool,itf,ktf,its,ite,kts,kte               &
-                              ,var2d1,buoy_exc)
+                                  ,qeso_cup,po,po_cup,z_cup,heo,hkbo,qo,qeso,entr_rate_2d,hcot   &
+                                  ,k22,kbmax,klcl,kbcon,ktop,depth_neg_buoy,frh                  &
+                                  ,start_level_,max_ktop,zqexec,ztexec,x_add_buoy                &
+                                  ,xland,cnvcf,heso,wlpool,itf,ktf,its,ite,kts,kte               &
+                                  ,var2d1,buoy_exc,kpbl)
       implicit none
       character *(*)            ,intent (in   ) :: cumulus
       character(len=128)        ,intent (inout) :: ierrc(:)
       integer                   ,intent (in   ) :: itf,ktf,its,ite, kts,kte
-      integer, dimension (:)    ,intent (in   ) :: kbmax,start_level_,max_ktop
+      integer, dimension (:)    ,intent (in   ) :: kbmax,start_level_,max_ktop,kpbl
       integer, dimension (:)    ,intent (inout) :: kbcon,ierr,ktop,klcl,k22
-      real,    dimension (:,:)  ,intent (in   ) :: heo_cup,heso_cup,po_cup,z_cup,heo &
+      real,    dimension (:,:)  ,intent (inout) :: heo_cup,heso_cup,po_cup,z_cup,heo &
                                                   ,qo_cup,qeso_cup,po,qo,qeso,heso,buoy_exc
       real,    dimension (:)    ,intent (in   ) :: cap_max_in,cap_inc,xland,wlpool
       real,    dimension (:)    ,intent (in   ) :: zqexec,ztexec,x_add_buoy
@@ -4293,17 +4310,20 @@ module module_cu_gf_monan
       real            :: Z_overshoot !--- height of cloud overshoot is 10% higher than the LNB.
                                      !--- Typically it can 2 - 2.5km higher, but it depends on
                                      !--- the severity of the thunderstorm.
-      integer                      ::   i,k,vtp_index,next_k22
+      integer                      ::   i,k,vtp_index
       integer, dimension (its:ite) ::   start_level
       real                         ::   dz, denom, min_deep_top, cloud_depth
-      real   , dimension (its:ite) ::   x_add,cap_max
+      real   , dimension (its:ite) ::   x_add,cap_max, local_ierr
       real   , dimension (kts:kte,its:ite) ::   h_env_eff
+      integer, dimension (1) :: loc1
 
       ktop       (:) = kts
       kbcon      (:) = kts
       cap_max    (:) = cap_max_in(:) + cap_max_wlpool * (0.5*wlpool(:)**2)*pbl_ave_rho
       x_add      (:) = c_alvl*zqexec(:) + c_cp*ztexec(:) + x_add_buoy(:)
       start_level(:) = start_level_(:)
+      
+      local_ierr = 0
 
       if(use_pass_cloudvol == 1) then
            h_env_eff(:,:) = (1.-cnvcf(:,:))*heo(:,:) + cnvcf(:,:)*heso(:,:)
@@ -4311,14 +4331,11 @@ module module_cu_gf_monan
            h_env_eff(:,:) = heo(:,:)
       endif
       !
-      !--- Determine the level of convective cloud base  - kbcon
+      !--- Determine the level of convective cloud base  - kbcon - for near surface air parcels
       !
       loop0: do vtp_index = get_num_elements(vec_ok),1,-1 ; i = get_data_value(vec_ok,vtp_index)
-         !next_k22 = 0
-         hcot(kts:start_level(i),i) = hkbo(i) ! assumed no entrainment between kts:start_level(i)
-
-         !loop1:  do while(ierr(i) == 0)
-
+         
+            hcot(kts:start_level(i),i) = hkbo(i) ! assumed no entrainment between kts:start_level(i)
             kbcon(i)=start_level(i)
             do k=start_level(i)+1, ktf
                dz        = z_cup(k,i)-z_cup(k-1,i)
@@ -4328,59 +4345,95 @@ module module_cu_gf_monan
                
                if(k==start_level(i)+1) hcot(k,i) = hcot(k,i) + x_add(i)*entr_rate_2d(k-1,i)*dz/denom
             enddo
-            hcot(ktf+1,i) = heso_cup(ktf+1,i)
             
-            loop2: do while (hcot(kbcon(i),i) < heso_cup(kbcon(i),i))                      
+            loop1: do while (hcot(kbcon(i),i) < heso_cup(kbcon(i),i))                      
                       kbcon(i) = kbcon(i) + 1
                       if(kbcon(i) > kbmax(i)) then 
-                         ierr(i)=3 ; is_removed = remove(vec_ok, i)
-                         ierrc(i)="could not find reasonable kbcon in cup_kbcon : above kbmax"
-
-                         !next_k22 = 1  
-                         exit loop2
+                         ierr(i)=3 ! do not execute this "is_removed = remove(vec_ok, i)"
+                         ierrc(i)="could not find reasonable kbcon in cup_kbcon : above kbmax" 
+                         exit loop1
                       endif
-            enddo loop2
-
-         !    if(next_k22 == 0) cycle loop0
-         !    !
-         !    !- if am here -> kbcon not found for air parcels from k22 level
-         !    k22(i)=k22(i)+1
- 
-         !    !- get new hkbo
-         !    call get_cloud_bc(cumulus,ave_layer,kts,kte,ktf,xland(i),po(kts:kte,i),heo_cup (kts:kte,i) &
-         !                     ,hkbo (i),k22(i),x_add(i))
-            
-         !    start_level(i)=start_level(i)+1
-         !    if( start_level(i) > kbmax(i) ) then
-         !          ierr(i)=3 ; is_removed = remove(vec_ok, i)
-         !          ierrc(i)="could not find reasonable kbcon in cup_kbcon : above kbmax"
-         !          exit loop0
-         !    endif
-         !    !
-         !    hcot(start_level(i),i)=hkbo (i)
-         ! enddo loop1
-      
+            enddo loop1
       enddo loop0
+
       !
+!go to 444
+      !
+      !--- Determine the level of convective cloud base (kbcon) for elevated convection
+      !--- loop over only the columns tagged with ierr=3
+      loop10: do vtp_index = get_num_elements(vec_ok),1,-1 ; i = get_data_value(vec_ok,vtp_index)
+             
+              if (ierr(i) == 3) then
+                    local_ierr(i) = 3
+
+                    !--for checking
+                    !heo_cup(14,i) = heo_cup(14,i) * 2. => maxloc = 14
+                    !
+                    !if(i==4678)print*,'ierr1',i,ierr(i),kbmax(i),kpbl(i),kbcon(i)
+                    call local_max(kbmax(i)+1 -(kpbl(i)+1) + 1,heo_cup(kpbl(i)+1:kbmax(i)+1,i),loc1)
+
+                    !-- no local max found
+                    if(loc1(1) == -999) then
+                       ierr(i)=333 ; is_removed = remove(vec_ok, i) ; cycle loop10
+                    endif
+                    !
+                    !- if I am here, a max MSE below kbmax and above PBL was found   
+                    start_level(i) = loc1(1) + kpbl(i)
+
+                    !- MSE for the probe air parcel
+                    hcot(kts:start_level(i),i) = heo_cup (start_level(i),i) + x_add(i)
+                    
+                    !- reset ierr to 0
+                    ierr(i)=0
+                    !- find a potential kbcon
+                    kbcon(i)=start_level(i)
+                    do k=start_level(i)+1, ktf
+                       dz    = z_cup(k,i)-z_cup(k-1,i)
+                       denom = 1.+0.5*entr_rate_2d(k-1,i)*dz
+                       hcot(k,i)= ( (1.-0.5*entr_rate_2d(k-1,i)*dz)*hcot      (k-1,i)     &
+                                          + entr_rate_2d(k-1,i)*dz *h_env_eff (k-1,i) ) / denom
+                       
+                       if(k==start_level(i)+1) hcot(k,i) = hcot(k,i) + x_add(i)*entr_rate_2d(k-1,i)*dz/denom
+                       
+                    enddo
+
+                    loop11: do while (hcot(kbcon(i),i) < heso_cup(kbcon(i),i))
+                       kbcon(i)=kbcon(i)+1
+                       if(kbcon(i) > kbmax(i)) then
+                          ierr(i)=333 ;  is_removed = remove(vec_ok, i) ! now remove this column definetively
+                          ierrc(i)="could not find reasonable kbcon in cup_kbcon : above kbmax"
+                          exit loop11
+                       endif
+                    enddo loop11
+                    !if(i==4678)print*,'ierr2',i,ierr(i),kbmax(i),kpbl(i),loc1(1),kbcon(i)
+               
+              endif
+      enddo loop10
+
       !--- Test if air parcel has enough energy (cap_max) to reach the positive buoyant region
       !
+go to 444
       loop3: do vtp_index = get_num_elements(vec_ok),1,-1 ; i = get_data_value(vec_ok,vtp_index)
                  !---     cloud base pressure and max moist static energy pressure
                  !---     i.e., the depth (in mb) of the layer of negative buoyancy
                  depth_neg_buoy(i) = - (po_cup(kbcon(i),i)-po_cup(start_level(i),i))
-
                  !--- test if the air parcel has enough energy to reach the positive buoyant region
                  if(cap_max(i) >= depth_neg_buoy(i)) cycle loop3
                  ierr(i)=30 ; is_removed = remove(vec_ok, i)
                  ierrc(i)="not  enough energy to reach the positive buoyant region in cup_cloud_limits"
+                  !if(i==4678)print*,'ierr3',i,ierr(i),kbcon(i),cap_max(i), depth_neg_buoy(i)
+
       enddo loop3 
+444 continue
       !
       !--- Determine the level of neutral buoyancy - ktop
       !
       loop4: do vtp_index = get_num_elements(vec_ok),1,-1 ; i = get_data_value(vec_ok,vtp_index)
                do k=kbcon(i)+1,ktf-1
                   if(hcot(k,i) < heso_cup(k,i))then
-                     ktop(i) = k ; cycle loop4
+                   !if(i==4678)print*,'ierr4',i,ierr(i),kbcon(i),k
+                    ktop(i) = k ; cycle loop4
+
                   endif
                enddo
       enddo loop4
@@ -4396,6 +4449,8 @@ module module_cu_gf_monan
                   ierr(i)=33 ; is_removed = remove(vec_ok, i)
                   ierrc(i)='cloud top or cloud_depth too low for deep'
                endif
+                !if(i==4678)print*,'ierr5',i,ierr(i),kbcon(i),cloud_depth,ktop(i)
+
             enddo
             !
             !--- apply overshoot 
@@ -4410,6 +4465,7 @@ module module_cu_gf_monan
                enddo loop5
             endif
       endif
+
    end subroutine cup_cloud_limits2
    !------------------------------------------------------------------------------------
    subroutine cup_cloud_limits(cumulus,ierrc,ierr,cap_inc,cap_max_in,heo_cup,heso_cup,qo_cup &
@@ -6340,7 +6396,7 @@ module module_cu_gf_monan
          ,output_sound,use_pass_cloudvol,use_lcl_ctrl_entr,use_rhu_ctrl_entr      &
          ,cum_min_cloud_depth,use_sub3d,cum_fr_min_entr,use_shear_ctrl_entr       &
          ,use_cwv_ctrl_entr,adv_trigger,dcape_threshold,use_cold_start            &
-         ,cum_min_up_cld_frc
+         ,cum_min_up_cld_frc,use_elev_conv
 
       if(present(IO_NODE)) then 
          local_io_node = IO_NODE
@@ -6414,6 +6470,7 @@ module module_cu_gf_monan
          print*, 't_star             ' , real(cum_t_star         ,4)
          print*, 'cap_maxs           ' , real(cap_maxs           ,4)
          print*, 'moist_trigger      ' , moist_trigger
+         print*, 'use_elev_conv      ' , use_elev_conv
          print*, 'tau_deep,tau_mid   ' , real(tau_deep,4),real(tau_mid,4)
          print*, 'sgs_w_timescale    ' , sgs_w_timescale
          print*, 'convection_tracer  ' , convection_tracer
@@ -8824,7 +8881,7 @@ module module_cu_gf_monan
       
       dicycle           = 2 
       cum_t_star        = (/1., -99., -99./)
-      
+      use_elev_conv     = 0
       downdraft         = 1   
       use_rebcb         = 1 
       irainevap         = 0
@@ -12098,6 +12155,36 @@ module module_cu_gf_monan
    
          e_value = min(1.25, max(0.0, real(raw_e,4)))
     end function e_from_lcl_vsr_chebyshev      
+!---------------------------------------------------------------------------------------------!
+    subroutine local_max(n,array,loc1)
+         implicit none
+         integer, intent(in) :: n
+         real, dimension(n), intent(in) :: array
+         integer,dimension(1), intent(inout) :: loc1
+         ! Logical masks
+         logical :: is_local_max(n)
+         logical :: search_mask(n) 
+         integer :: i
+
+
+         ! Step 1: Identify all local maxima
+         is_local_max = .false.
+         ! Check internal elements (2 neighbors)
+         do i = 2, N - 1
+             if (array(i) > array(i-1) .and. array(i) > array(i+1)) then
+                 is_local_max(i) = .true.
+             end if
+         end do
+         ! Step 2: Find the absolute highest local maximum
+         search_mask = is_local_max
+         if (.not. any(search_mask)) then
+             loc1(1) = -999
+             !print *, "No local maxima found."
+         else 
+             loc1 = maxloc(array, mask=search_mask)
+             !print*,"1st Highest Local Max at index: ", loc1(1), " with value: ", array(loc1(1))           
+         end if
+    end subroutine local_max
 !---------------------------------------------------------------------------------------------!
 
 
