@@ -19,7 +19,7 @@
                                             != 2 adds Qadv closure (Becker et al 2021) 
   cum_t_star = 1., -99., -99.,              != scale temperature for diurnal cycle closure, 
  
-  use_elev_conv     = 1,                    !- flag for nocturnal convection
+  use_elev_conv     = 0,                    !- flag for nocturnal convection
 
   use_sub3d         = 0,
   use_scale_dep     = 1,           != 0/1: turn ON/OFF the scale dependence approach

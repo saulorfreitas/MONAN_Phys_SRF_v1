@@ -711,7 +711,7 @@ module module_cu_gf_monan
             tsur  (i) = temp2m(i,j) 
             
             ter11 (i) = max(0.,topt(i,j))
-            kpbli (i) = kpbl(i,j)
+            kpbli (i) = min(max(kts,kpbl(i,j)),ktf)
             xlons (i) = lons(i,j) ! in degrees
             xlats (i) = lats(i,j) ! in degress
           enddo
@@ -1945,7 +1945,7 @@ module module_cu_gf_monan
            !
            !--- determine the level of convective cloud base  - kbcon, cloud top - ktop
            !
-           if( use_elev_conv == 1 .and. trim(cumulus) == 'deep' ) then
+           if( use_elev_conv >= 1 .and. trim(cumulus) == 'deep' ) then
                !print*,'calling cup_cloud_limits 2', use_elev_conv
                !-
                !--- check for elevated convection cloud base
@@ -4310,12 +4310,11 @@ module module_cu_gf_monan
       real            :: Z_overshoot !--- height of cloud overshoot is 10% higher than the LNB.
                                      !--- Typically it can 2 - 2.5km higher, but it depends on
                                      !--- the severity of the thunderstorm.
-      integer                      ::   i,k,vtp_index
+      integer                      ::   i,k,vtp_index,loc1
       integer, dimension (its:ite) ::   start_level
       real                         ::   dz, denom, min_deep_top, cloud_depth
       real   , dimension (its:ite) ::   x_add,cap_max, local_ierr
       real   , dimension (kts:kte,its:ite) ::   h_env_eff
-      integer, dimension (1) :: loc1
 
       ktop       (:) = kts
       kbcon      (:) = kts
@@ -4357,28 +4356,30 @@ module module_cu_gf_monan
       enddo loop0
 
       !
-!go to 444
-      !
-      !--- Determine the level of convective cloud base (kbcon) for elevated convection
-      !--- loop over only the columns tagged with ierr=3
-      loop10: do vtp_index = get_num_elements(vec_ok),1,-1 ; i = get_data_value(vec_ok,vtp_index)
+      if(use_elev_conv == 2) then 
+        !
+        !--- Determine the level of convective cloud base (kbcon) for elevated convection
+        !--- loop over only the columns tagged with ierr=3
+        loop10: do vtp_index = get_num_elements(vec_ok),1,-1 ; i = get_data_value(vec_ok,vtp_index)
              
               if (ierr(i) == 3) then
                     local_ierr(i) = 3
-
+                    if(kbmax(i) <= kpbl(i)) then
+                       ierr(i)=333 ; is_removed = remove(vec_ok, i) ; cycle loop10
+                    endif
                     !--for checking
-                    !heo_cup(14,i) = heo_cup(14,i) * 2. => maxloc = 14
+                    !heo_cup(14,i) = heo_cup(14,i) * 2. => maxloc = 14 
                     !
                     !if(i==4678)print*,'ierr1',i,ierr(i),kbmax(i),kpbl(i),kbcon(i)
                     call local_max(kbmax(i)+1 -(kpbl(i)+1) + 1,heo_cup(kpbl(i)+1:kbmax(i)+1,i),loc1)
 
                     !-- no local max found
-                    if(loc1(1) == -999) then
+                    if(loc1 == -999) then
                        ierr(i)=333 ; is_removed = remove(vec_ok, i) ; cycle loop10
                     endif
                     !
                     !- if I am here, a max MSE below kbmax and above PBL was found   
-                    start_level(i) = loc1(1) + kpbl(i)
+                    start_level(i) = loc1 + kpbl(i)
 
                     !- MSE for the probe air parcel
                     hcot(kts:start_level(i),i) = heo_cup (start_level(i),i) + x_add(i)
@@ -4408,8 +4409,8 @@ module module_cu_gf_monan
                     !if(i==4678)print*,'ierr2',i,ierr(i),kbmax(i),kpbl(i),loc1(1),kbcon(i)
                
               endif
-      enddo loop10
-
+        enddo loop10
+      endif ! elevated convection
       !--- Test if air parcel has enough energy (cap_max) to reach the positive buoyant region
       !
 go to 444
@@ -12156,16 +12157,17 @@ go to 444
          e_value = min(1.25, max(0.0, real(raw_e,4)))
     end function e_from_lcl_vsr_chebyshev      
 !---------------------------------------------------------------------------------------------!
-    subroutine local_max(n,array,loc1)
+    subroutine local_max(n,array,loc_max)
          implicit none
-         integer, intent(in) :: n
+         integer, intent(in)  :: n
+         integer, intent(out) :: loc_max
          real, dimension(n), intent(in) :: array
-         integer,dimension(1), intent(inout) :: loc1
+         !local var
+         integer,dimension(1) :: loc1
          ! Logical masks
          logical :: is_local_max(n)
          logical :: search_mask(n) 
          integer :: i
-
 
          ! Step 1: Identify all local maxima
          is_local_max = .false.
@@ -12178,10 +12180,11 @@ go to 444
          ! Step 2: Find the absolute highest local maximum
          search_mask = is_local_max
          if (.not. any(search_mask)) then
-             loc1(1) = -999
+             loc_max = -999
              !print *, "No local maxima found."
          else 
              loc1 = maxloc(array, mask=search_mask)
+             loc_max = loc1(1)
              !print*,"1st Highest Local Max at index: ", loc1(1), " with value: ", array(loc1(1))           
          end if
     end subroutine local_max
