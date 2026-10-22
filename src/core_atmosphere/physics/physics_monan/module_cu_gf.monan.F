@@ -4315,7 +4315,7 @@ module module_cu_gf_monan
       real            :: Z_overshoot !--- height of cloud overshoot is 10% higher than the LNB.
                                      !--- Typically it can 2 - 2.5km higher, but it depends on
                                      !--- the severity of the thunderstorm.
-      integer                      ::   i,k,vtp_index,loc1
+      integer                      ::   i,k,vtp_index,loc1,next_k22
       integer, dimension (its:ite) ::   start_level
       real                         ::   dz, denom, min_deep_top, cloud_depth &
                                        ,w_large_scale, grid_factor, mse_add
@@ -4339,8 +4339,11 @@ module module_cu_gf_monan
       !--- Determine the level of convective cloud base  - kbcon - for near surface air parcels
       !
       loop0: do vtp_index = get_num_elements(vec_ok),1,-1 ; i = get_data_value(vec_ok,vtp_index)
-         
-            hcot(kts:start_level(i),i) = hkbo(i) ! assumed no entrainment between kts:start_level(i)
+         next_k22 = 0
+         hcot(kts:start_level(i),i) = hkbo(i) ! assumed no entrainment between kts:start_level(i)
+
+         loop1:  do while(ierr(i) == 0)
+
             kbcon(i)=start_level(i)
             do k=start_level(i)+1, ktf
                dz        = z_cup(k,i)-z_cup(k-1,i)
@@ -4351,14 +4354,31 @@ module module_cu_gf_monan
                if(k==start_level(i)+1) hcot(k,i) = hcot(k,i) + x_add(i)*entr_rate_2d(k-1,i)*dz/denom
             enddo
             
-            loop1: do while (hcot(kbcon(i),i) < heso_cup(kbcon(i),i))                      
+            loop2: do while (hcot(kbcon(i),i) < heso_cup(kbcon(i),i))                      
                       kbcon(i) = kbcon(i) + 1
-                      if(kbcon(i) > kbmax(i)) then 
-                         ierr(i)=3 ! do not execute this "is_removed = remove(vec_ok, i)"
-                         ierrc(i)="could not find reasonable kbcon in cup_kbcon : above kbmax" 
-                         exit loop1
+                      if(kbcon(i) > kpbl(i)) then 
+                         next_k22 = 1 ; exit loop2
                       endif
-            enddo loop1
+            enddo loop2
+      
+            if(next_k22 == 0) cycle loop0
+            
+            start_level(i)=start_level(i)+1
+            
+            if( start_level(i) > kpbl(i) ) then
+                  ierr(i)=3 ; is_removed = remove(vec_ok, i)
+                  ierrc(i)="could not find reasonable kbcon in cup_kbcon : above kpbl"
+                  exit loop1
+            endif            
+
+            !- if am here -> kbcon not found for air parcels from k22 level and inside the PBL
+            k22(i)=k22(i)+1
+            !- get new hkbo
+            call get_cloud_bc(cumulus,ave_layer,kts,kte,ktf,xland(i),po(kts:kte,i),heo_cup (kts:kte,i) &
+                             ,hkbo (i),k22(i),x_add(i))
+            hcot(start_level(i),i)=hkbo (i)
+
+         enddo loop1
       enddo loop0
 
       !
