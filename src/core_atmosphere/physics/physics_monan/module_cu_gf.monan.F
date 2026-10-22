@@ -307,8 +307,8 @@ module module_cu_gf_monan
 
    !--- new entrainment formulation which uses the lateral entrainment rate as a trigger function
    real, parameter ::  delta_ref= 30.e+3  &   ! meters
-   !                  ,entr_ref = 1.2e-3     ! ref entrainment for dx = 30000 m
-                      ,entr_ref = 0.8e-3     ! ref entrainment for dx = 30000 m
+   !                    ,entr_ref = 1.e-3     ! ref entrainment for dx = 30000 m
+                       ,entr_ref = 0.8e-3     ! ref entrainment for dx = 30000 m
 
    real, parameter, dimension(2) :: entr_red  = (/1.,0.333/)
    !
@@ -4310,7 +4310,7 @@ module module_cu_gf_monan
       !  local variables in this routine
       real, parameter :: cap_max_wlpool = 0.0 , pbl_ave_rho = 1.0 , w_large_scale_lim = 1.e-2 &
                         ,tau = 200. & ! forcing time scale (sec)
-                        ,g0  = 25     ! km^2 reference
+                        ,g0  = 25.     ! km^2 reference
 
       real            :: Z_overshoot !--- height of cloud overshoot is 10% higher than the LNB.
                                      !--- Typically it can 2 - 2.5km higher, but it depends on
@@ -4387,14 +4387,14 @@ module module_cu_gf_monan
                        cycle loop10
                     endif
                     !
-                    !- if I am here, a max MSE below kbmax and above PBL was found   
+                    !- if I am here, a local max of MSE below kbmax and above PBL was found   
                     start_level(i) = loc1 + kpbl(i)
 
                     !-- get the large scale vertical velocity for triggering
                     w_large_scale = - 0.3333*( omeg(max(start_level(i)-1,kts),i,1) + omeg(start_level(i),i,1) + &
                                                omeg(    start_level(i)+1     ,i,1) ) / (c_grav * rho(start_level(i),i))
 
-                    if(w_large_scale < w_large_scale_lim) then
+                    if(w_large_scale < w_large_scale_lim .and. wlpool(i) < w_large_scale_lim) then
                        ierr(i)=335 ; is_removed = remove(vec_ok, i) 
                        ierrc(i)="could not find reasonable kbcon : large scale W not positive"
                        cycle loop10
@@ -4445,7 +4445,8 @@ module module_cu_gf_monan
               endif
         enddo loop10
       endif ! elevated convection
-     ! stop 11
+
+
       !--- Test if air parcel has enough energy (cap_max) to reach the positive buoyant region
       !
 go to 444
@@ -4467,9 +4468,7 @@ go to 444
       loop4: do vtp_index = get_num_elements(vec_ok),1,-1 ; i = get_data_value(vec_ok,vtp_index)
                do k=kbcon(i)+1,ktf-1
                   if(hcot(k,i) < heso_cup(k,i))then
-                   !if(i==10890)print*,'ierr4',i,ierr(i),kbcon(i),k
                     ktop(i) = k ; cycle loop4
-
                   endif
                enddo
       enddo loop4
@@ -4485,8 +4484,6 @@ go to 444
                   ierr(i)=33 ; is_removed = remove(vec_ok, i)
                   ierrc(i)='cloud top or cloud_depth too low for deep'
                endif
-                !if(i==10890)print*,'ierr5',i,ierr(i),kbcon(i),cloud_depth,ktop(i)
-
             enddo
             !
             !--- apply overshoot 
@@ -4501,8 +4498,6 @@ go to 444
                enddo loop5
             endif
       endif
-     ! stop 333
-
    end subroutine cup_cloud_limits2
    !------------------------------------------------------------------------------------
    subroutine cup_cloud_limits(cumulus,ierrc,ierr,cap_inc,cap_max_in,heo_cup,heso_cup,qo_cup &
