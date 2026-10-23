@@ -1919,10 +1919,15 @@ module module_cu_gf_monan
            call get_lcl(cumulus,convection_tracer,use_memory,ave_layer,its,ite,itf,kts,kte,ktf,ierr &
                        ,x_add_buoy,zqexec,ztexec,xland,po,t_cup,p_cup,z_cup,q_cup,k22,klcl,zlcl_sfc)
            !--- 
-           if( use_shear_ctrl_entr < 0 .and. trim(cumulus) == 'deep') & 
+           if( (use_shear_ctrl_entr < 0 .and. use_shear_ctrl_entr > -5) .and. trim(cumulus) == 'deep') & 
                call compute_E_tilde(itf,ktf,its,ite,kts,kte,ierr,u_cup,v_cup,zo_cup,t_cup     &
                                    ,p_cup,q_cup,zlcl_sfc,vshear2,E_tilde,i_step_ent,entr_rate &
                                    ,bulk_wshear_factor, min_entr_rate, xland, var2d1, var2d2) 
+           !--- 
+           if(  use_shear_ctrl_entr == -5 .and. trim(cumulus) == 'deep') & 
+               call compute_E_tilde2(itf,ktf,its,ite,kts,kte,ierr,u_cup,v_cup,zo_cup,t_cup     &
+                                    ,p_cup,q_cup,zlcl_sfc,vshear2,E_tilde,i_step_ent,entr_rate &
+                                    ,bulk_wshear_factor, min_entr_rate, xland, var2d1, var2d2) 
            !
            !--- start_level
            !
@@ -2495,7 +2500,7 @@ module module_cu_gf_monan
          !var2d1(:) = entr_rate(:)
          !var2d1(:) = bulk_wshear_factor(:)
          !var2d2(:) = E_tilde(:)
-          var2d2(:) = x_add_buoy(:)
+         !var2d2(:) = x_add_buoy(:)
          !if( adv_trigger == 0 .and. convection_tracer == 1) then 
          !   do i=its,itf
          !      var2d2(i) = maxval( buoy_exc(kts:ktop(i),i) )
@@ -12428,9 +12433,210 @@ go to 444
          end do
    
          e_value = min(1.25, max(0.0, real(raw_e,4)))
-    end function e_from_lcl_vsr_chebyshev      
+      end function e_from_lcl_vsr_chebyshev      
 !---------------------------------------------------------------------------------------------!
-    subroutine local_max(n,array,loc_max)
+      subroutine compute_E_tilde2(itf,ktf,its,ite,kts,kte,ierr,u_cup,v_cup,zo_cup,t_cup  &
+                                ,p_cup,q_cup,zlcl,vshear2,E_tilde,i_step_ent,entr_rate   &
+                                ,bulk_wshear_factor,min_entr_rate, xland, var2d1, var2d2)  
+         implicit none
+         integer,                intent(in) :: itf,ktf,its,ite,kts,kte,i_step_ent
+         real,                   intent(in) :: min_entr_rate
+         integer,dimension(:),   intent(in) :: ierr
+         real   ,dimension(:),   intent(in) :: xland
+         real   ,dimension(:),   intent(inout) :: zlcl,vshear2,E_tilde,entr_rate,var2d1,var2d2 &
+                                                 ,bulk_wshear_factor
+         real   ,dimension(:,:), intent(in) :: u_cup,v_cup,zo_cup,p_cup,q_cup,t_cup
+
+         !local
+         integer :: i,vtp_index,k1,k2, status
+         
+         if(i_step_ent == 1) then  
+            call compute_LCL(itf,its,ite,ierr,t_cup(kts,:),p_cup(kts,:),q_cup(kts,:),zlcl)
+            
+            do vtp_index = get_num_elements(vec_ok),1,-1; i = get_data_value(vec_ok,vtp_index)
+              call calculate_vsr(real(zo_cup(:,i),8),real(u_cup(:,i),8),real(v_cup(:,i),8) &
+                                ,real(zlcl(i),8),vshear2(i),status)               
+              
+              E_tilde(i) = real(e_tilde_fit(vshear2(i),zlcl(i)),4)
+              
+              !print*,'etilde2=',vshear2(i),zlcl(i),E_tilde(i),status
+              E_tilde(i) = max(0.0, min(E_tilde(i),1.0))
+            enddo
+         endif 
+         !---- modify the entrainment based on LCL and wind-shear
+         do vtp_index = get_num_elements(vec_ok),1,-1; i = get_data_value(vec_ok,vtp_index)
+             entr_rate(i) = max(0.05, 1.0 - E_tilde(i)) *  entr_rate(i) ! * (1.0 + bulk_wshear_factor(i))
+             entr_rate(i) = max(entr_rate(i), min_entr_rate)
+             var2d1(i) =  E_tilde(i)
+             var2d2(i) =  zlcl(i)
+         enddo
+
+      end subroutine compute_E_tilde2
+!----------------------------------------------------------------------------------------------------------         
+      subroutine calculate_vsr(z, u, v, zlcl, vsr_out, status)
+        use, intrinsic :: ieee_arithmetic, only: ieee_is_nan
+
+        implicit none
+              ! Heights: metres AGL; winds: m/s; zlcl: metres AGL.
+              ! z must increase strictly and cover [0, max(6000,zlcl)].
+              ! Supply a surface wind at z=0 (e.g. use the 10-m wind there).
+              ! Wind components are interpolated linearly in height.
+              ! Storm motion = height-weighted 0--6000 m mean wind.
+              ! VSR = height-weighted mean of |wind - storm_motion| below LCL.
+        ! Inputs: heights in metres AGL; winds in m/s.
+        ! z must increase strictly and cover [0, max(6000,zlcl)].
+        ! Output: mean storm-relative speed between surface and LCL.
+        !
+        ! Optional status:
+        !   0 = success
+        !   1 = invalid array sizes or nonfinite inputs
+        !   2 = heights are not strictly increasing
+        !   3 = nonpositive LCL
+        !   4 = insufficient vertical coverage
+
+        real(8), intent(in) :: z(:), u(:), v(:), zlcl
+        real(4), intent(out) :: vsr_out
+        integer, intent(out), optional :: status
+
+        real(8), parameter :: R0 = 0.0_8, R6000 = 6000.0_8
+        integer, parameter :: nsub = 4
+
+        real(8), parameter :: nodes(8) = [ &
+          -0.9602898564975363_8, -0.7966664774136267_8, &
+          -0.5255324099163290_8, -0.1834346424956498_8, &
+           0.1834346424956498_8,  0.5255324099163290_8, &
+           0.7966664774136267_8,  0.9602898564975363_8 ]
+
+        real(8), parameter :: weights(8) = [ &
+           0.1012285362903763_8, 0.2223810344533745_8, &
+           0.3137066458778873_8, 0.3626837833783620_8, &
+           0.3626837833783620_8, 0.3137066458778873_8, &
+           0.2223810344533745_8, 0.1012285362903763_8 ]
+
+        real(8) :: a, b, ua, ub, va, vb, f, depth
+        real(8) :: c_u, c_v, integral
+        real(8) :: mid, half, zz, uu, vv
+        real(8) :: left, right, t, dz, ru, rv, du, dv
+        integer :: n, k, j, q, subdivision
+
+        vsr_out = 0.0_4
+        if (zlcl <= R0) return
+        if (present(status)) status = 0
+
+        n = size(z)-1
+
+        ! Storm motion: height-weighted 0--6000 m mean wind.
+        ! Trapezoidal integration is exact for linearly interpolated
+        ! wind components.
+        c_u = R0
+        c_v = R0
+
+        do k = 1, n-1
+          a = max(R0, z(k))
+          b = min(R6000, z(k+1))
+          if (b <= a) cycle
+
+          depth = z(k+1) - z(k)
+
+          f = (a-z(k))/depth
+          ua = u(k) + f*(u(k+1)-u(k))
+          va = v(k) + f*(v(k+1)-v(k))
+
+          f = (b-z(k))/depth
+          ub = u(k) + f*(u(k+1)-u(k))
+          vb = v(k) + f*(v(k+1)-v(k))
+
+          c_u = c_u + 0.5_8*(ua+ub)*(b-a)
+          c_v = c_v + 0.5_8*(va+vb)*(b-a)
+        end do
+
+        c_u = c_u/R6000
+        c_v = c_v/R6000
+
+        ! Integrate storm-relative wind magnitude below the LCL.
+        integral = R0
+
+        do k = 1, n-1
+          a = max(R0, z(k))
+          b = min(zlcl, z(k+1))
+          if (b <= a) cycle
+
+          depth = z(k+1) - z(k)
+          du = u(k+1) - u(k)
+          dv = v(k+1) - v(k)
+          ru = u(k) - c_u
+          rv = v(k) - c_v
+          dz = du*du + dv*dv
+
+          ! Split at the minimum storm-relative speed within the segment.
+          t = a
+          if (dz > R0) then
+            t = z(k) - depth*(ru*du+rv*dv)/dz
+            t = max(a, min(b, t))
+          end if
+
+          do j = 1, 2
+            if (j == 1) then
+              left = a
+              right = t
+            else
+              left = t
+              right = b
+            end if
+            if (right <= left) cycle
+
+            half = (right-left)/(2.0_8*nsub)
+
+            do subdivision = 1, nsub
+              mid = left + (2.0_8*subdivision-1.0_8)*half
+
+              do q = 1, 8
+                zz = mid + half*nodes(q)
+                f = (zz-z(k))/depth
+                uu = u(k) + f*du - c_u
+                vv = v(k) + f*dv - c_v
+
+                integral = integral + &
+                           half*weights(q)*sqrt(uu*uu+vv*vv)
+              end do
+            end do
+          end do
+        end do
+        !--- shear 
+        vsr_out = real(integral/zlcl, kind=4)
+
+        if (ieee_is_nan(vsr_out)) then
+                   print *, 'NaN detected in vsr_out'
+                   vsr_out = 0.0
+                   print *, 'fixed NaN detected in vsr_out', vsr_out
+                   stop 22
+        end if
+        if (present(status)) status = 0
+              
+      end subroutine calculate_vsr
+!----------------------------------------------------------------------------------------------------------
+      ! VSR in m/s; LCL in m. Original scale_factor1/2 are NOT applied.
+      ! Input values used for fitting: VSR 1.5--13.5; LCL 150--1450.
+      pure real(8) function e_tilde_fit(vsr_, lcl_) result(e_value)
+          real(4), intent(in) :: vsr_, lcl_
+          real(8) :: eta, t, vsr, lcl
+
+          vsr = real(vsr_, kind=8)
+          lcl = real(lcl_, kind=8)
+
+          eta = -2.739547939674196_8 + &
+                 0.18468664910313881_8 * vsr + &
+                 0.0016337846053383627_8 * lcl
+
+          if (eta >= 0.0_8) then
+              e_value = 1.0_8 / (1.0_8 + exp(-eta))
+          else
+              t = exp(eta)
+              e_value = t / (1.0_8 + t)
+          end if
+      end function e_tilde_fit
+!----------------------------------------------------------------------------------------------------------         
+      subroutine local_max(n,array,loc_max)
          implicit none
          integer, intent(in)  :: n
          integer, intent(out) :: loc_max
@@ -12460,7 +12666,7 @@ go to 444
              loc_max = loc1(1)
              !print*,"1st Highest Local Max at index: ", loc1(1), " with value: ", array(loc1(1))           
          end if
-    end subroutine local_max
+      end subroutine local_max
 !---------------------------------------------------------------------------------------------!
 
 
