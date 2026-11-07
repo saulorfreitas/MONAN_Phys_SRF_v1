@@ -306,11 +306,12 @@ module module_cu_gf_monan
    real, parameter :: pgcon= 0.0
 
    !--- new entrainment formulation which uses the lateral entrainment rate as a trigger function
-   real, parameter ::  delta_ref= 30.e+3  &   ! meters
-   !                    ,entr_ref = 1.e-3     ! ref entrainment for dx = 30000 m
-                       ,entr_ref = 0.8e-3     ! ref entrainment for dx = 30000 m
+   real, parameter ::  delta_ref = 30.e+3  &   ! meters
+                       ,entr_ref = 0.8e-3      ! ref entrainment for dx = 30000 m (paper)
+   !                   ,entr_ref = 1.0e-3      ! ref entrainment for dx = 30000 m
 
-   real, parameter, dimension(2) :: entr_red  = (/1.,0.333/)
+   real, parameter, dimension(2) :: entr_red  = (/1.,0.5/) ! paper: entr_red  = (/1.,0.333/)
+
    !
    !--- for tracer transport
    integer, parameter :: MAX_NSPEC=200
@@ -1964,12 +1965,11 @@ module module_cu_gf_monan
            if( use_elev_conv >= 1 .and. trim(cumulus) == 'deep' ) then
                
                !--- check for elevated convection cloud base
-               call cup_cloud_limits2(cumulus,ierrc,ierr,cap_max_increment,cap_max,heo_cup,heso_cup,qo_cup       &
-                                     ,qeso_cup,po,po_cup,zo_cup,heo,hkbo,qo,qeso,entr_rate_2d,hcot,k22,kbmax     &
-                                     ,klcl,kbcon,ktop,depth_neg_buoy,frh_bcon,start_level,max_ktop,zqexec,ztexec &
-                                     ,x_add_buoy,xland,cnvcf,heso,wlpool,itf,ktf,its,ite, kts,kte,var2d1,buoy_exc&
-                                     ,kpbl,omeg,rho,t,tn_adv,qo_adv,dtime,dx                                     &
-                                     ,elevated_source,elevated_dq,elevated_dt)
+               call cup_cloud_limits2(cumulus,ierrc,ierr,cap_max_increment,cap_max,heo_cup,heso_cup,qo_cup          &
+                                     ,qeso_cup,po,po_cup,zo_cup,heo,hkbo,qo,qeso,entr_rate_2d,hcot,k22,kbmax        &
+                                     ,klcl,kbcon,ktop,depth_neg_buoy,frh_bcon,start_level,max_ktop,zqexec,ztexec    &
+                                     ,x_add_buoy,xland,cnvcf,heso,wlpool,itf,ktf,its,ite, kts,kte,var2d1,buoy_exc   &
+                                     ,kpbl,omeg,rho,t,tn_adv,qo_adv,dtime,dx,elevated_source,elevated_dq,elevated_dt)
            else
                !--- original formulation
                call cup_cloud_limits (cumulus,ierrc,ierr,cap_max_increment,cap_max,heo_cup,heso_cup,qo_cup       &
@@ -1992,7 +1992,6 @@ module module_cu_gf_monan
       call get_lcl(cumulus,convection_tracer,use_memory,ave_layer,its,ite,itf,kts,kte,ktf,ierr, &
                    x_add_buoy,zq_source,zt_source,xland,po,t_cup,p_cup,z_cup,q_cup,k22,klcl, &
                    zlcl_sfc,elevated_source=elevated_source,only_elevated=.true.)
-
       !
       !--- scale dependence factor (sig)
       !
@@ -4460,10 +4459,7 @@ module module_cu_gf_monan
                     !--for checking
                     !heo_cup(14,i) = heo_cup(14,i) * 2. => maxloc = 14 
                     !
-                    !print*,'---------'
-                    !if(i==10890)print*,'ierr1',i,ierr(i),kbmax(i),kpbl(i),kbcon(i)
                     call local_max(kbmax(i)+1 -(kpbl(i)+1) + 1,heo_cup(kpbl(i)+1:kbmax(i)+1,i),loc1)
-
                     !-- no local max found
                     if(loc1 == -999) then
                        ierr(i)=334 ; is_removed = remove(vec_ok, i)                           
@@ -4475,14 +4471,14 @@ module module_cu_gf_monan
                     start_level(i) = loc1 + kpbl(i)
 
                     !-- get the large scale vertical velocity for triggering
-                  !   w_large_scale = - 0.3333*( omeg(max(start_level(i)-1,kts),i,1) + omeg(start_level(i),i,1) + &
-                  !                              omeg(    start_level(i)+1     ,i,1) ) / (c_grav * rho(start_level(i),i))
+                    w_large_scale = - 0.3333*( omeg(max(start_level(i)-1,kts),i,1) + omeg(start_level(i),i,1) + &
+                                               omeg(    start_level(i)+1     ,i,1) ) / (c_grav * rho(start_level(i),i))
 
-                  !   if(w_large_scale < w_large_scale_lim .and. wlpool(i) < w_large_scale_lim) then
-                  !      ierr(i)=335 ; is_removed = remove(vec_ok, i) 
-                  !      ierrc(i)="could not find reasonable kbcon : large scale W not positive"
-                  !      cycle loop10
-                  !   endif
+                    if(w_large_scale < w_large_scale_lim .and. wlpool(i) < w_large_scale_lim) then
+                        ierr(i)=335 ; is_removed = remove(vec_ok, i) 
+                        ierrc(i)="could not find reasonable kbcon : large scale W not positive"
+                        cycle loop10
+                    endif
                     !--- resolution factor (Park et al 2024)
                     grid_factor = max(dx(i)*dx(i),g0)/g0 - 1.0
 
