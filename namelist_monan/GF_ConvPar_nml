@@ -32,7 +32,7 @@
   use_shear_ctrl_entr=0,
   use_cwv_ctrl_entr = 0,
   convection_tracer = 1,           != 0/1:  turn on/off the "convection" tracer
-  add_coldpool_clos = 4,           ! add the the mass flux associated to the W @ leading of the gust front
+  add_coldpool_clos = 1,           ! add the the mass flux associated to the W @ leading of the gust front
   add_coldpool_trig = 0,           ! add triggering criteria based on cold pool presence
   use_memory        = 0,
 
