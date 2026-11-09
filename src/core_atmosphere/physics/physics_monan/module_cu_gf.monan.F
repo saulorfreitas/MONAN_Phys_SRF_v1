@@ -146,7 +146,7 @@ module module_cu_gf_monan
                                                 !,1.3e-3  & !shallow
                                                 !,2.0e-3  & !mid
                                                 !/)
-   integer, parameter :: opt  = 1                                              
+   integer, parameter :: opt  = 0                                        
 
    integer :: use_lcl_ctrl_entr != 0/1     - default 0
 
@@ -2344,7 +2344,8 @@ module module_cu_gf_monan
                   call cup_forcing_ens_deep(itf,ktf,its,ite, kts,kte,ens4,ensdim,ichoice,maxens,maxens2,maxens3 &
                                            ,ierr,k22,kbcon,ktop,xland1,aa0,aa1,xaa0,mbdt,dtime,xf_ens,mconv,qo  &
                                            ,po_cup,omeg,zdo,zuo,pr_ens,edto,tau_ecmwf,aa1_bl,xf_dicycle, xk_x   &
-                                           ,alpha_adv,Q_adv,aa1_radpbl,wlpool_bcon,xf_coldpool,cin1             )
+                                           ,alpha_adv,Q_adv,aa1_radpbl,wlpool_bcon,xf_coldpool,cin1,x_add_buoy  &
+                                           ,var2d1,var2d2)
 
             if(cumulus == 'mid') &
                   call cup_forcing_ens_mid(aa0,aa1,xaa0,mbdt,dtime,ierr ,po_cup,ktop,k22,kbcon,kpbl,ichoice    &
@@ -2518,10 +2519,10 @@ module module_cu_gf_monan
          !var2d1(:) = aa1(:)
          !var2d2(:) = aa1_bl(:)
          !var2d1(:) = vshear2(:)
-         var2d1(:) = entr_rate(:)*1000.
+         !var2d1(:) = entr_rate(:)*1000.
          !var2d1(:) = bulk_wshear_factor(:)
          !var2d2(:) = E_tilde(:)
-         var2d2(:) = x_add_buoy(:)/c_cp
+         !var2d2(:) = x_add_buoy(:)/c_cp
          !if( adv_trigger == 0 .and. convection_tracer == 1) then 
          !   do i=its,itf
          !      var2d2(i) = maxval( buoy_exc(kts:ktop(i),i) )
@@ -2541,8 +2542,8 @@ module module_cu_gf_monan
          !         if(use_pass_cloudvol == 0 ) &
          !         var2d1(i) = var2d1(i) + entr_rate_2d_initial(k,i)*dp
          !   enddo
-            !var2d2(i) = var2d2(i)/trash 
-            !var2d1(i) = var2d1(i)/trash 
+         !   var2d2(i) = var2d2(i)/trash 
+         !   var2d1(i) = var2d1(i)/trash 
          !enddo
       endif
 
@@ -3172,36 +3173,7 @@ module module_cu_gf_monan
       !- at leading edge of the cold pool gust front as a surplus
       !- for the mass flux already determined.
       !-
-      if(convection_tracer == 1 .and. add_coldpool_clos > 0) then 
-         if(add_coldpool_clos == 1 )then
-            do vtp_index = get_num_elements(vec_ok),1,-1
-               i = get_data_value(vec_ok,vtp_index)
-               ke_gf = 0.5*wlpool(i)**2 + 1.0e-6
-               w_cb = c3*sqrt(ke_gf) + c4
-               xf_coldpool(i) = c1 * w_cb * exp (-c2* abs(min(cin1(i),0.))/ke_gf)
-            enddo
-            !if(maxval(xf_coldpool) > 0.1) print*,'xf_coldpool',maxval(xf_coldpool)
-      
-         endif
-         if(add_coldpool_clos == 2 )then
-            do vtp_index = get_num_elements(vec_ok),1,-1
-               i = get_data_value(vec_ok,vtp_index)
-               if(xk(i) >= 0.) cycle
-               xf_coldpool(i) = -(0.5*wlpool(i)**2/tau_ecmwf(i)) /xk(i)
-            enddo
-         endif
-         if(add_coldpool_clos == 3 )then
-            do vtp_index = get_num_elements(vec_ok),1,-1
-               i = get_data_value(vec_ok,vtp_index)
-               ke_gf = 0.5*wlpool(i)**2 + 1.0e-6
-               w_cb = wlpool(i)
-               xf_coldpool(i) = c1 * w_cb * exp (-c2* abs(min(cin1(i),0.))/ke_gf)
-               !if(xf_coldpool(i)> 0.05)&
-               !print*,'xfcp', xf_coldpool(i), w_cb , cin1(i), ke_gf
-            enddo
-            !if(maxval(xf_coldpool) > 0.1) print*,'xf_coldpool',maxval(xf_coldpool)
-         endif
-         if(add_coldpool_clos == 4 )then
+      if(convection_tracer == 1 .and. add_coldpool_clos == 1) then 
             do vtp_index = get_num_elements(vec_ok),1,-1
                i = get_data_value(vec_ok,vtp_index)
                if(xk(i) < 0.) then 
@@ -3211,8 +3183,7 @@ module module_cu_gf_monan
                  xff_mid(i,3)= xff_mid(i,3) + (-(ke_gf/tau_ecmwf(i))/xk(i))
                endif
             enddo
-          endif
-       endif 
+      endif 
    end subroutine cup_forcing_ens_mid
    !------------------------------------------------------------------------------------
    subroutine cup_minimi(array,ks,kend,kt,ierr,itf,ktf,its,ite, kts,kte  )
@@ -5012,12 +4983,17 @@ module module_cu_gf_monan
          do vtp_index = get_num_elements(vec_ok),1,-1
             i = get_data_value(vec_ok,vtp_index)
             xmb_ave(i)=0.
+            fsum=0.
             do n=1,maxens3
+                  !--- not including closure 4 brown(1979) Frank-cohen(199x)
+                  if((n .ge. 4 .and. n .le. 6 ) .or. n==14) cycle
                   xmb_ave(i)=xmb_ave(i)+xf_ens(i,n)
+                  fsum=fsum+1.
             enddo
             !- 'ensemble' average mass flux
-            xmb_ave(i)=xmb_ave(i)/float(maxens3)
+            xmb_ave(i)=xmb_ave(i)/fsum
          enddo
+         
 
       !- mid (congestus type) convection
       elseif(cumulus=='mid') then
@@ -5186,7 +5162,7 @@ module module_cu_gf_monan
                                   ,maxens2,maxens3,ierr,k22,kbcon,ktop,xland,aa0,aa1,xaa0      &
                                   ,mbdt,dtime,xf_ens,mconv,qo,p_cup,omeg,zd,zu,pr_ens,edt      &
                                   ,tau_ecmwf,aa1_bl,xf_dicycle,xk_x,alpha_adv,Q_adv,aa1_radpbl &
-                                  ,wlpool,xf_coldpool,cin1)
+                                  ,wlpool,xf_coldpool,cin1,x_add_buoy,var2d1,var2d2)
 
       implicit none
       integer  ,intent (in   ) :: itf,ktf,its,ite, kts,kte,ens4
@@ -5210,7 +5186,7 @@ module module_cu_gf_monan
       ! iact_gr_old = flag to tell where convection was active
       ! kbcon       = LFC of parcel from k22
       ! k22         = updraft originating level
-      ! ichoice       = flag if only want one closure (usually set to zero!)
+      ! ichoice     = flag if only want one closure (usually set to zero!)
       ! name        = deep or shallow convection flag
       !
       real,    dimension (:,:)    ,intent (inout)  :: pr_ens
@@ -5219,7 +5195,7 @@ module module_cu_gf_monan
       real,    dimension (:,:,:)  ,intent (in   )  :: omeg
       real,    dimension (:)      ,intent (in   )  :: xaa0
       real,    dimension (:)      ,intent (in   )  :: aa1,edt,xland
-      real,    dimension (:)      ,intent (inout)  :: mconv
+      real,    dimension (:)      ,intent (inout)  :: mconv,var2d1,var2d2
       real,    dimension (:)      ,intent (in   )  :: aa0
       real,    dimension (:)      ,intent (in   )  :: mbdt
       real                        ,intent (in   )  :: dtime
@@ -5227,17 +5203,17 @@ module module_cu_gf_monan
       integer, dimension (:)      ,intent (inout)  :: ierr
       integer                     ,intent (in   )  :: ichoice
 
-      real,    dimension (:)      ,intent(in)      :: aa1_bl,tau_ecmwf,alpha_adv&
-                                                     ,Q_adv,aa1_radpbl,wlpool,cin1
+      real,    dimension (:)      ,intent(in)      :: aa1_bl,tau_ecmwf,alpha_adv &
+                                                     ,Q_adv,aa1_radpbl,wlpool,cin1,x_add_buoy
       real,    dimension (:)      ,intent(inout)   :: xf_dicycle,xk_x,xf_coldpool
-     
+
       !
       !  local variables in this routine
       !
       integer                          :: i,k,kk,nall,n,ne,nens,nens3,vtp_index
       real                             :: xff_dicycle
       real                             :: a1,a_ave,xff0,xomg,KE_gf,W_cb
-      real, parameter                  :: c1 = 0.06, c2 = 1., c3 = 0.28,  c4 = 0.0 !0.64 
+      real, parameter                  :: c1 = 0.06, c2 = 1., c3 = 0.28,  rho_pbl = 1.0 , c4 = 0.0 !0.64 
       real, dimension (1:maxens3)      :: xff_ens3
       real, dimension (its:ite)        :: xk
       real, dimension (its:ite)        :: ens_adj
@@ -5391,47 +5367,33 @@ module module_cu_gf_monan
       !- at leading edge of the cold pool gust front as a surplus
       !- for the mass flux already determined.
       !-
-      if(convection_tracer == 1 .and. add_coldpool_clos > 0) then 
-         if(add_coldpool_clos == 1 )then
-            do vtp_index = get_num_elements(vec_ok),1,-1
-               i = get_data_value(vec_ok,vtp_index)
-               ke_gf = 0.5*wlpool(i)**2 + 1.0e-6
-               w_cb = c3*sqrt(ke_gf) + c4
-               xf_coldpool(i) = c1 * w_cb * exp (-c2* abs(min(cin1(i),0.))/ke_gf)
-            enddo
-            !if(maxval(xf_coldpool) > 0.1) print*,'xf_coldpool',maxval(xf_coldpool)
-         endif
-         if(add_coldpool_clos == 2 )then
-            do vtp_index = get_num_elements(vec_ok),1,-1
-               i = get_data_value(vec_ok,vtp_index)
-               if(xk(i) >= 0.) cycle
-               xf_coldpool(i) = -(0.5*wlpool(i)**2/tau_ecmwf(i)) /xk(i)
-            enddo
-         endif
-         if(add_coldpool_clos == 3 )then
-            do vtp_index = get_num_elements(vec_ok),1,-1
-               i = get_data_value(vec_ok,vtp_index)
-               ke_gf = 0.5*wlpool(i)**2 + 1.0e-6
-               w_cb = wlpool(i)
-               xf_coldpool(i) = c1 * w_cb * exp (-c2* abs(min(cin1(i),0.))/ke_gf)
-               !if(xf_coldpool(i)> 0.05)&
-               !print*,'xfcp', xf_coldpool(i), w_cb , cin1(i), ke_gf
-            enddo
-            !if(maxval(xf_coldpool) > 0.1) print*,'xf_coldpool',maxval(xf_coldpool)
-         endif
-         if(add_coldpool_clos == 4 )then
-            do vtp_index = get_num_elements(vec_ok),1,-1
-               i = get_data_value(vec_ok,vtp_index)
+      if(convection_tracer == 1 .and. add_coldpool_clos == 1) then 
+         if(ichoice == 10 .or. ichoice == 0)then
+            do vtp_index = get_num_elements(vec_ok),1,-1 ; i = get_data_value(vec_ok,vtp_index)
                if(xk(i) < 0.) then 
                  ke_gf = 0.5*wlpool(i)**2 + 1.0e-6
                  w_cb  = wlpool(i) * exp (-c2* abs(min(cin1(i),0.))/ke_gf)
                  ke_gf = 0.5*w_cb**2.
                  xf_ens(i,10)    = xf_ens(i,10) + (-(ke_gf/tau_ecmwf(i))/xk(i))
                  xf_ens(i,11:13) = xf_ens(i,10)
-                 if(ichoice.ge.1) xf_ens(i,1:16) = xf_ens(i,ichoice)
+                 if(ichoice == 10) xf_ens(i,1:16) = xf_ens(i,ichoice)
                endif
             enddo
          endif
+         if(ichoice == 7 .or. ichoice == 0)then
+            do vtp_index = get_num_elements(vec_ok),1,-1 ; i = get_data_value(vec_ok,vtp_index)
+               
+                 w_cb  = rho_pbl * wlpool(i) * x_add_buoy(i) / c_alvl 
+                 a1    = max(1.e-3,pr_ens(i,7))
+                 var2d1(i) = w_cb/a1     ! for output purposes only, not used in the model
+                 var2d2(i) = xf_ens(i,7) ! for output purposes only, not used in the model
+                 xf_ens(i,7  ) = xf_ens(i,7) + w_cb/a1
+                 xf_ens(i,8:9) = xf_ens(i,7)
+                 xf_ens(i,15 ) = xf_ens(i,7)
+                 if(ichoice == 7) xf_ens(i,1:16) = xf_ens(i,ichoice)
+               
+            enddo
+         endif         
       endif 
    end subroutine cup_forcing_ens_deep
    !------------------------------------------------------------------------------------
