@@ -2345,7 +2345,7 @@ module module_cu_gf_monan
                                            ,ierr,k22,kbcon,ktop,xland1,aa0,aa1,xaa0,mbdt,dtime,xf_ens,mconv,qo  &
                                            ,po_cup,omeg,zdo,zuo,pr_ens,edto,tau_ecmwf,aa1_bl,xf_dicycle, xk_x   &
                                            ,alpha_adv,Q_adv,aa1_radpbl,wlpool_bcon,xf_coldpool,cin1,x_add_buoy  &
-                                           ,var2d1,var2d2)
+                                           ,zq_source,zt_source,var2d1,var2d2)
 
             if(cumulus == 'mid') &
                   call cup_forcing_ens_mid(aa0,aa1,xaa0,mbdt,dtime,ierr ,po_cup,ktop,k22,kbcon,kpbl,ichoice    &
@@ -4987,6 +4987,9 @@ module module_cu_gf_monan
             do n=1,maxens3
                   !--- not including closure 4 brown(1979) Frank-cohen(199x)
                   if((n .ge. 4 .and. n .le. 6 ) .or. n==14) cycle
+                  !--- not including closure 1 Grell (1993)
+                  if((n .ge. 1 .and. n .le. 3 ) .or. n==16) cycle
+
                   xmb_ave(i)=xmb_ave(i)+xf_ens(i,n)
                   fsum=fsum+1.
             enddo
@@ -5162,7 +5165,7 @@ module module_cu_gf_monan
                                   ,maxens2,maxens3,ierr,k22,kbcon,ktop,xland,aa0,aa1,xaa0      &
                                   ,mbdt,dtime,xf_ens,mconv,qo,p_cup,omeg,zd,zu,pr_ens,edt      &
                                   ,tau_ecmwf,aa1_bl,xf_dicycle,xk_x,alpha_adv,Q_adv,aa1_radpbl &
-                                  ,wlpool,xf_coldpool,cin1,x_add_buoy,var2d1,var2d2)
+                                  ,wlpool,xf_coldpool,cin1,x_add_buoy,zqexec,ztexec,var2d1,var2d2)
 
       implicit none
       integer  ,intent (in   ) :: itf,ktf,its,ite, kts,kte,ens4
@@ -5195,6 +5198,8 @@ module module_cu_gf_monan
       real,    dimension (:,:,:)  ,intent (in   )  :: omeg
       real,    dimension (:)      ,intent (in   )  :: xaa0
       real,    dimension (:)      ,intent (in   )  :: aa1,edt,xland
+      real,    dimension (:)      ,intent (in   ) :: zqexec,ztexec
+
       real,    dimension (:)      ,intent (inout)  :: mconv,var2d1,var2d2
       real,    dimension (:)      ,intent (in   )  :: aa0
       real,    dimension (:)      ,intent (in   )  :: mbdt
@@ -5213,12 +5218,10 @@ module module_cu_gf_monan
       integer                          :: i,k,kk,nall,n,ne,nens,nens3,vtp_index
       real                             :: xff_dicycle
       real                             :: a1,a_ave,xff0,xomg,KE_gf,W_cb
-      real, parameter                  :: c1 = 0.06, c2 = 1., c3 = 0.28,  rho_pbl = 1.0 , c4 = 0.0 !0.64 
+      real, parameter                  :: c1 = 0.06, c2 = 1., c3 = 0.28,  rho_pbl = 1.0 , tun = 0.25
       real, dimension (1:maxens3)      :: xff_ens3
       real, dimension (its:ite)        :: xk
-      real, dimension (its:ite)        :: ens_adj
       !
-      ens_adj(:)=1.
       xf_ens(:,1:16)= 0.
       !--- LARGE SCALE FORCING
       !
@@ -5252,6 +5255,9 @@ module module_cu_gf_monan
          do k=kbcon(i),ktop(i)
              mconv(i)=mconv(i)+omeg(k,i,1)*(qo(k+1,i)-qo(k,i))/c_grav
          enddo
+         !-- adding perturbation to the moisture convergence term
+         mconv(i)=mconv(i)+omeg(kbcon(i),i,1)*zqexec(i)/c_grav
+         mconv(i)=mconv(i)+omeg(kbcon(i),i,1)*x_add_buoy(i)/(c_alvl * c_grav)
 
          mconv(i)  = max(0., mconv(i))
          xff_ens3(7) = mconv(i)
@@ -5265,7 +5271,6 @@ module module_cu_gf_monan
          xff_ens3(11)= xff_ens3(10)
          xff_ens3(12)= xff_ens3(10)
          xff_ens3(13)= xff_ens3(10)
-
          !
          if(ichoice == 0)then
             if(xff0 < 0.)then
@@ -5273,11 +5278,6 @@ module module_cu_gf_monan
                xff_ens3( 2)=0.
                xff_ens3( 3)=0.
                xff_ens3(16)=0.
-
-               xff_ens3(10)=0.
-               xff_ens3(11)=0.
-               xff_ens3(12)=0.
-               xff_ens3(13)=0.
             endif
          endif
 
@@ -5323,7 +5323,6 @@ module module_cu_gf_monan
             xf_ens(i,12)= 0.
             xf_ens(i,13)= 0.
          endif
-
 
          if(ichoice.ge.1)then
             xf_ens(i,1:16) =xf_ens(i,ichoice)
@@ -5382,8 +5381,9 @@ module module_cu_gf_monan
          endif
          if(ichoice == 7 .or. ichoice == 0)then
             do vtp_index = get_num_elements(vec_ok),1,-1 ; i = get_data_value(vec_ok,vtp_index)
-               
-                 w_cb  = rho_pbl * wlpool(i) * x_add_buoy(i) / c_alvl 
+                 ke_gf = 0.5*wlpool(i)**2 + 1.0e-6
+                 w_cb  = wlpool(i) * exp (-c2* abs(min(cin1(i),0.))/ke_gf)
+                 w_cb  = tun * rho_pbl * w_cb * x_add_buoy(i) / c_alvl 
                  a1    = max(1.e-3,pr_ens(i,7))
                  var2d1(i) = w_cb/a1     ! for output purposes only, not used in the model
                  var2d2(i) = xf_ens(i,7) ! for output purposes only, not used in the model
@@ -5391,7 +5391,6 @@ module module_cu_gf_monan
                  xf_ens(i,8:9) = xf_ens(i,7)
                  xf_ens(i,15 ) = xf_ens(i,7)
                  if(ichoice == 7) xf_ens(i,1:16) = xf_ens(i,ichoice)
-               
             enddo
          endif         
       endif 
@@ -7998,14 +7997,14 @@ module module_cu_gf_monan
          point_src=.false.
          if (present(elevated_source)) point_src=elevated_source(i)
          x_add = (c_alvl*zqexec(i)+c_cp*ztexec(i)) +  x_add_buoy(i)
-         call get_cloud_bc(cumulus,ave_layer,kts,kte,ktf,xland(i),po(kts:kte,i),he_cup (kts:kte,i),hkb (i)    ,k22(i),x_add, &
-      point_source=point_src)
+         call get_cloud_bc(cumulus,ave_layer,kts,kte,ktf,xland(i),po(kts:kte,i),he_cup (kts:kte,i),hkb (i)    ,k22(i),0.   , &
+                           point_source=point_src)
          call get_cloud_bc(cumulus,ave_layer,kts,kte,ktf,xland(i),po(kts:kte,i),heo_cup(kts:kte,i),hkbo(i)    ,k22(i),x_add, &
-      point_source=point_src)
+                           point_source=point_src)
          call get_cloud_bc(cumulus,ave_layer,kts,kte,ktf,xland(i),po(kts:kte,i),u_cup  (kts:kte,i),uc  (kts,i),k22(i), &
-      point_source=point_src)
+                           point_source=point_src)
          call get_cloud_bc(cumulus,ave_layer,kts,kte,ktf,xland(i),po(kts:kte,i),v_cup  (kts:kte,i),vc  (kts,i),k22(i), &
-      point_source=point_src)
+                           point_source=point_src)
       enddo
 
       do vtp_index = get_num_elements(vec_ok),1,-1
@@ -8024,8 +8023,8 @@ module module_cu_gf_monan
       if(cumulus == 'shallow' .and. use_linear_subcl_mf == 1) then
          do vtp_index = get_num_elements(vec_ok),1,-1
             i = get_data_value(vec_ok,vtp_index)
-         point_src=.false.
-         if (present(elevated_source)) point_src=elevated_source(i)
+            point_src=.false.
+            if (present(elevated_source)) point_src=elevated_source(i)
             call get_delmix(cumulus,kts,kte,ktf,xland(i),start_level(i),po(kts:kte,i) &
                            ,he_cup (kts:kte,i), hc (kts:kte,i))
             call get_delmix(cumulus,kts,kte,ktf,xland(i),start_level(i),po(kts:kte,i) &
@@ -8059,7 +8058,8 @@ module module_cu_gf_monan
             if(k==start_level(i)+1) then
                   x_add = (c_alvl*zqexec(i)+c_cp*ztexec(i)) +  x_add_buoy(i)
                   hco(k,i)= hco(k,i) + x_add*up_massentro(k-1,i)/denom
-                  hc (k,i)= hc (k,i) + x_add*up_massentro(k-1,i)/denom
+                  !-- not perturbing the current MSE
+                  ! hc (k,i)= hc (k,i) + x_add*up_massentro(k-1,i)/denom
             endif
            
             uc(k,i)=(uc(k-1,i)*zuo(k-1,i)-.5*up_massdetru(k-1,i)*uc(k-1,i)+     &
@@ -12676,6 +12676,7 @@ subroutine retry_elevated_after_code33(kts,kte,ktf,kpbl,kbmax,z,p,h_env,h_sat, &
   accepted=.true.;reason=0
   source_out=ks;kbcon_out=base;ktop_out=top
 end subroutine retry_elevated_after_code33
+
 
 end  module module_cu_gf_monan
 
