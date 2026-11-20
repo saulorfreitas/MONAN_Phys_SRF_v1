@@ -310,8 +310,8 @@ module module_cu_gf_monan
                        ,entr_ref = 0.8e-3      ! ref entrainment for dx = 30000 m (paper)
    !                   ,entr_ref = 1.0e-3      ! ref entrainment for dx = 30000 m
 
-   real, parameter, dimension(2) :: entr_red  = (/1.,0.5/) ! paper: entr_red  = (/1.,0.333/)
-
+   real, parameter, dimension(2) :: entr_red  = (/1.,0.4/) ! paper: entr_red  = (/1.,0.333/)
+   real, parameter :: fr_entr_ocean = 0.3
    !
    !--- for tracer transport
    integer, parameter :: MAX_NSPEC=200
@@ -1886,7 +1886,7 @@ module module_cu_gf_monan
            !
            !---- tmp
            entr_factor = 1.0
-           if( (use_shear_ctrl_entr < 0 .and. use_shear_ctrl_entr > -4) .and.   trim(cumulus) == 'deep') entr_factor = 1.33333
+           if( (use_shear_ctrl_entr < 0 .and. use_shear_ctrl_entr > -4) .and. trim(cumulus) == 'deep') entr_factor = 1.33333
 
            !--- define the initial entrainment rate and the mininum acceptable entrainment rate
            !--- formulation 1: reescale entrainment rate in terms of the grid spacing (Zhao et al 2024, GRL https://doi.org/10.1029/2024GL110735)
@@ -1900,6 +1900,8 @@ module module_cu_gf_monan
               entr_rate(:)  = entr_rate_input * fac_cold_start
               min_entr_rate = entr_rate_input * fr_min_entr
            endif
+           !--- increase the entrainment rate over the oceans
+           if( fr_entr_ocean > 0.0 ) entr_rate(:) = entr_rate(:) * (1.0 + fr_entr_ocean * xland(:))
            ! 
            !--- controls of LCL and PBL turbulence on the entrainment rate
            if(use_lcl_ctrl_entr > 0 ) then 
@@ -4945,7 +4947,7 @@ module module_cu_gf_monan
       integer                          :: i,k,n,ncount,zmax,kk,kqmx,ktmx,vtp_index
       real                             :: outtes,ddtes,dtt,dtq,dtqc &
                                          ,dtpw,prerate,fixouts,dp   &
-                                         ,xfixQ,xfixT,dtts,dtqs,fsum, rcount,temp2theta
+                                         ,xfixQ,xfixT,dtts,dtqs,fsum, rcount,temp2theta, xmb_Land,xmb_Ocean
       real,    dimension (its:ite)     :: xmb_ave,xmbmax
       real,    dimension (8)           :: tend1d
       !
@@ -4980,7 +4982,14 @@ module module_cu_gf_monan
       !--- calculate ensemble average mass fluxes
       !
       if(cumulus == 'deep') then
-         do vtp_index = get_num_elements(vec_ok),1,-1
+        if(ichoice == -999) then
+          do vtp_index = get_num_elements(vec_ok),1,-1; i = get_data_value(vec_ok,vtp_index)
+            xmb_Land  = 0.5*(xf_ens(i,7)+xf_ens(i,10))
+            xmb_Ocean = xf_ens(i,7)
+            xmb_ave(i)= (1.-xland1(i))*xmb_Land + xland1(i)*xmb_Ocean
+          enddo
+        else
+          do vtp_index = get_num_elements(vec_ok),1,-1
             i = get_data_value(vec_ok,vtp_index)
             xmb_ave(i)=0.
             fsum=0.
@@ -4995,8 +5004,8 @@ module module_cu_gf_monan
             enddo
             !- 'ensemble' average mass flux
             xmb_ave(i)=xmb_ave(i)/fsum
-         enddo
-         
+          enddo
+        endif 
 
       !- mid (congestus type) convection
       elseif(cumulus=='mid') then
@@ -7267,7 +7276,7 @@ module module_cu_gf_monan
       real   ,intent(out)           :: x_aver
       !-- local vars
       integer                       :: i,local_order_aver,order_aver, i_beg,i_end,ic
-      real,    parameter            :: frac_ave_layer_ocean= 0.5
+      real,    parameter            :: frac_ave_layer_ocean= 1.
       real                          :: count,dp,dp_layer,effec_frac,x_ave_layer
 
       if (present(point_source)) then
