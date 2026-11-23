@@ -306,9 +306,8 @@ module module_cu_gf_monan
    real, parameter :: pgcon= 0.0
 
    !--- new entrainment formulation which uses the lateral entrainment rate as a trigger function
-   real, parameter ::  delta_ref = 30.e+3  &   ! meters
-                       ,entr_ref = 0.8e-3      ! ref entrainment for dx = 30000 m (paper)
-   !                   ,entr_ref = 1.0e-3      ! ref entrainment for dx = 30000 m
+   real, parameter ::  delta_ref= 30.e+3  &   ! meters
+                      ,entr_ref = 0.8e-3     ! ref entrainment for dx = 30000 m
 
    real, parameter, dimension(2) :: entr_red  = (/1.,0.4/) ! paper: entr_red  = (/1.,0.333/)
    real, parameter :: fr_entr_ocean = 0.3
@@ -1892,9 +1891,13 @@ module module_cu_gf_monan
            !--- formulation 1: reescale entrainment rate in terms of the grid spacing (Zhao et al 2024, GRL https://doi.org/10.1029/2024GL110735)
            !--- and also use larger initial entrainment rate as trigger function
            if(  entr_rate_input < 0.0 ) then 
-              entr_rescaled(:) = (delta_ref/dx(:))**0.2 * fac_cold_start 
-              entr_rate    (:) = entr_ref * entr_rescaled(:) * entr_red(i_step_ent) * entr_factor
-              min_entr_rate    = entr_ref * fr_min_entr * minval(entr_rescaled)
+             !entr_rescaled(:) = (delta_ref/dx(:))**0.2 * fac_cold_start 
+             !entr_rate    (:) = entr_ref * entr_rescaled(:) * entr_red(i_step_ent) * entr_factor
+             !min_entr_rate    = entr_ref * fr_min_entr * minval(entr_rescaled)
+             do vtp_index = get_num_elements(vec_ok),1,-1 ; i = get_data_value(vec_ok,vtp_index)
+                 entr_rate (i) = entr_dx(dx(i)/1000.) * fac_cold_start * entr_red(i_step_ent) * entr_factor
+             enddo
+             min_entr_rate    = minval(entr_rate) * fr_min_entr
            else
            !--- formulation 2: using the namelist definition      
               entr_rate(:)  = entr_rate_input * fac_cold_start
@@ -12685,7 +12688,29 @@ subroutine retry_elevated_after_code33(kts,kte,ktf,kpbl,kbmax,z,p,h_env,h_sat, &
   accepted=.true.;reason=0
   source_out=ks;kbcon_out=base;ktop_out=top
 end subroutine retry_elevated_after_code33
+!---------------------------------------------------------------------------------------------!
+function entr_dx(dx) result(e)
+    real, intent(in) :: dx  ! Grid spacing in km; must be > 0
+    real :: e               ! Result in 1/m
+    real :: t, w, e_power
 
+    if (dx <= 8.0) then
+      e = 0.90 * (10.0 / dx)**0.20
+
+    else if (dx >= 12.0) then
+      e = 0.80
+
+    else
+      ! Smooth transition over 8–12 km.
+      t = (dx - 8.0) / 4.0
+      w = t**3 * (10.0 + t * (-15.0 + 6.0*t))
+
+      e_power = 0.90 * (10.0 / dx)**0.20
+      e = (1.0 - w) * e_power + w * 0.80
+    end if
+    e = e * 1.e-3  ! Convert to 1./meters
+  end function entr_dx
+!---------------------------------------------------------------------------------------------!
 
 end  module module_cu_gf_monan
 
