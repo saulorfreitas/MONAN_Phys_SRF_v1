@@ -12689,29 +12689,25 @@ subroutine retry_elevated_after_code33(kts,kte,ktf,kpbl,kbmax,z,p,h_env,h_sat, &
   source_out=ks;kbcon_out=base;ktop_out=top
 end subroutine retry_elevated_after_code33
 !---------------------------------------------------------------------------------------------!
-function entr_dx(dx) result(e)
-    real, intent(in) :: dx  ! Grid spacing in km; must be > 0
-    real :: e               ! Result in 1/m
-    real :: t, w, e_power
+pure elemental function entr_dx(dx) result(e)
+  implicit none
+  real, intent(in)  :: dx  ! local grid spacing in km; must be > 0
+  real :: e                ! entrainment rate in m^-1
+  real :: t, w
 
-    if (dx <= 8.0) then
-      e = 0.90 * (10.0 / dx)**0.20
+  if (dx >= 12.0) then
+    e = 0.80e-3 ; return
+  end if
 
-    else if (dx >= 12.0) then
-      e = 0.80
+  e = 0.90e-3 * (10.0 / dx)**0.20
 
-    else
-      ! Smooth transition over 8–12 km.
-      t = (dx - 8.0) / 4.0
-      w = t**3 * (10.0 + t * (-15.0 + 6.0*t))
-
-      e_power = 0.90 * (10.0 / dx)**0.20
-      e = (1.0 - w) * e_power + w * 0.80
-    end if
-    e = e * 1.e-3  ! Convert to 1./meters
-  end function entr_dx
+  if (dx > 8.0) then
+    t = (dx - 8.0) * 0.25
+    w = (t*t*t) * (10.0 + t*(-15.0 + 6.0*t))
+    e = e + w*(0.80e-3 - e)
+  end if
+end function entr_dx
 !---------------------------------------------------------------------------------------------!
-
 end  module module_cu_gf_monan
 
 
