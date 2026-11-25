@@ -2,7 +2,7 @@
 
   icumulus_gf   = 1,1,0,                   != trimodal plume (deep ,shallow ,congestus)
   
-  closure_choice    = 10,10,3,             != closure for the mass flux at the cloud base
+  closure_choice = -999,10,3,              != closure for the mass flux at the cloud base
   
   cum_entr_rate   = -999., 13.e-4, 20.e-4, != initial gross entrainment rate for 
                                            != deep, shallow, congestus
@@ -53,7 +53,7 @@
 !---
 !--- controls rainfall evaporation
   use_rebcb         = 1,               != 0/1: turn ON/OFF rainfall evap below cloud base
-  cum_MAX_EDT_LAND  = 0.50, 0.0, 0.3,   !-(deep ,shallow ,congestus)
+  cum_MAX_EDT_LAND  = 0.30, 0.0, 0.9,   !-(deep ,shallow ,congestus)
   cum_MAX_EDT_OCEAN = 0.45, 0.0, 0.4,
 !----
 

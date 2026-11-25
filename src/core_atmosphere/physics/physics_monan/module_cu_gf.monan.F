@@ -104,7 +104,7 @@ module module_cu_gf_monan
       ,n_cldrop,use_random_num,modConvParGF_initialized,use_pass_cloudvol&
       ,use_lcl_ctrl_entr,use_rhu_ctrl_entr,cum_min_cloud_depth,use_sub3d &
       ,cum_fr_min_entr,use_shear_ctrl_entr,use_cwv_ctrl_entr,adv_trigger &
-      ,dcape_threshold,use_cold_start,cum_min_up_cld_frc,use_elev_conv
+      ,dcape_threshold,cum_min_up_cld_frc,use_elev_conv
 
    public makeDropletNumber,makeIceNumber,FractLiqF                      &
       ,coldPoolStart,readGFConvParNML,initModConvParGF,cu_gf_monan_driver&
@@ -282,10 +282,6 @@ module module_cu_gf_monan
    real    ::  min_cloud_depth   != minimum cloud depth for activate convection
    integer ::  use_excess        != default= 1   - use for t,q excess sub-grid scale variability
    integer ::  use_smooth_tend   != default  1,1,1,
-
-   !--- make less restrictive the activation of deep convection on the first 24h time integration
-   integer :: use_cold_start     != 0/1 default 0
-   real    :: fac_cold_start  = 1.0
     
    !--- General internal controls for the diverse options in GF
 
@@ -636,8 +632,6 @@ module module_cu_gf_monan
       
       !print*,"buoyx kJ/kg - Wlpool m/s",1.e-3*maxval(buoyx(its:ite,kts:kte,jts:jte)),1.e-3*minval(buoyx(its:ite,kts:kte,jts:jte))&
       !              ,maxval(wlpool(its:ite,jts:jte)),minval(wlpool(its:ite,jts:jte))
-      !fac_cold_start = 1.0
-       if(use_cold_start == 1) fac_cold_start = allev_initial(itimestep,dt)
 
       !-- big loop over j dimension
       j_loop: do j = jts,jtf
@@ -1891,16 +1885,16 @@ module module_cu_gf_monan
            !--- formulation 1: reescale entrainment rate in terms of the grid spacing (Zhao et al 2024, GRL https://doi.org/10.1029/2024GL110735)
            !--- and also use larger initial entrainment rate as trigger function
            if(  entr_rate_input < 0.0 ) then 
-             !entr_rescaled(:) = (delta_ref/dx(:))**0.2 * fac_cold_start 
+             !entr_rescaled(:) = (delta_ref/dx(:))**0.2 
              !entr_rate    (:) = entr_ref * entr_rescaled(:) * entr_red(i_step_ent) * entr_factor
              !min_entr_rate    = entr_ref * fr_min_entr * minval(entr_rescaled)
              do vtp_index = get_num_elements(vec_ok),1,-1 ; i = get_data_value(vec_ok,vtp_index)
-                 entr_rate (i) = entr_dx(dx(i)/1000.) * fac_cold_start * entr_red(i_step_ent) * entr_factor
+                 entr_rate (i) = entr_dx(dx(i)/1000.) * entr_red(i_step_ent) * entr_factor
              enddo
              min_entr_rate    = minval(entr_rate) * fr_min_entr
            else
            !--- formulation 2: using the namelist definition      
-              entr_rate(:)  = entr_rate_input * fac_cold_start
+              entr_rate(:)  = entr_rate_input
               min_entr_rate = entr_rate_input * fr_min_entr
            endif
            !--- increase the entrainment rate over the oceans
@@ -6518,7 +6512,7 @@ module module_cu_gf_monan
          ,add_coldpool_clos,add_coldpool_trig,n_cldrop                            &
          ,output_sound,use_pass_cloudvol,use_lcl_ctrl_entr,use_rhu_ctrl_entr      &
          ,cum_min_cloud_depth,use_sub3d,cum_fr_min_entr,use_shear_ctrl_entr       &
-         ,use_cwv_ctrl_entr,adv_trigger,dcape_threshold,use_cold_start            &
+         ,use_cwv_ctrl_entr,adv_trigger,dcape_threshold                           &
          ,cum_min_up_cld_frc,use_elev_conv
 
       if(present(IO_NODE)) then 
@@ -6611,7 +6605,6 @@ module module_cu_gf_monan
          print*, 'use_cwv_ctrl_entr  ' , use_cwv_ctrl_entr
          print*, 'adv_trigger        ' , adv_trigger
          print*, 'dcape_threshold    ' , dcape_threshold
-         print*, 'use_cold_start     ' , use_cold_start
          print*,'!--- controls rainfall evaporation'
          print*, 'use_rebcb          ' , use_rebcb
          print*, 'downdraft          ' , downdraft
@@ -9016,7 +9009,7 @@ module module_cu_gf_monan
 
       !-- inicializa as variáveis do módulo
       icumulus_gf       = (/1, 1, 0/)
-      closure_choice    = (/10,10, 3/)
+      closure_choice    = (/-999,10, 3/)
       cum_entr_rate     = (/       &
                            -999.0  & !deep
                           ,13.0e-4 & !shallow
@@ -9028,7 +9021,6 @@ module module_cu_gf_monan
       use_rhu_ctrl_entr = 0
       use_shear_ctrl_entr=0
       use_cwv_ctrl_entr = 0
-      use_cold_start    = 1
       adv_trigger       = 0
       dcape_threshold   = 70.
       use_tracer_transp = 0 
@@ -9042,7 +9034,7 @@ module module_cu_gf_monan
 
       convection_tracer = 1 
       use_memory        = 0 
-      add_coldpool_clos = 4
+      add_coldpool_clos = 0
       add_coldpool_trig = 0
       tau_ocea_cp       = 3600. 
       tau_land_cp       = 7200. 
@@ -9055,12 +9047,12 @@ module module_cu_gf_monan
       
       dicycle           = 2 
       cum_t_star        = (/1., -99., -99./)
-      use_elev_conv     = 0
+      use_elev_conv     = 1
       downdraft         = 1   
       use_rebcb         = 1 
       irainevap         = 0
       cum_fr_min_entr   = (/0.01, 0.1, 0.1/)
-      cum_max_edt_land  = (/0.50, 0.00, 0.30/)
+      cum_max_edt_land  = (/0.30, 0.00, 0.30/)
       cum_max_edt_ocean = (/0.45, 0.00, 0.40/)
       cum_use_excess    = (/1, 1, 1/)
       cum_ave_layer     = (/50., 30., 30./)
@@ -11582,8 +11574,6 @@ module module_cu_gf_monan
                     tau_ecmwf(i)= min(10800., max(1200.,tau_ecmwf(i)))
                  enddo
               endif
-              if(use_cold_start==1 .and. fac_cold_start<0.99) tau_ecmwf(:) = tau_ecmwf(:)*fac_cold_start
-
       end subroutine get_timescales
 !---------------------------------------------------------------------------------------------!
       subroutine dicycle_closure_trigger(aa1_bl,aa1,t,tn,q,qo,dtime,po_cup,zo_cup,us,vs          &
@@ -11649,22 +11639,7 @@ module module_cu_gf_monan
 
 
       end subroutine dicycle_closure_trigger 
-!---------------------------------------------------------------------------------------------!
-      real function allev_initial(itimestep,dt)
-        implicit none
-        real,    parameter  :: sharpness = 1
-        real    ,parameter  :: maxseconds=86400.
-        integer ,intent(in) :: itimestep
-        real    ,intent(in) :: dt
-        integer :: max_timesteps
-        real    :: width2 
-        max_timesteps = nint(maxseconds/dt)
-        width2        = real(max_timesteps/6)
-        allev_initial = 0.5 * (1.0 + tanh(sharpness * (itimestep - (2*max_timesteps/3) ) / width2))
-        allev_initial = min(max(allev_initial,0.7),1.0)
 
-        !print*,"alle", itimestep,max_timesteps,width2,allev_initial,dt
-      end function
 !---------------------------------------------------------------------------------------------!
       subroutine compute_VSR(itf,ktf,its,ite,kts,kte,ierr,u0,v0,z0,zlcl_sfc,V_SR)
           implicit none
